@@ -1,0 +1,10 @@
+* text=auto
+*.rs text
+*.toml text
+*.md text
+*.yml text
+*.sh text eol=lf
+*.py text
+# golden CSVs must stay byte-identical to upstream output (LF), never CRLF
+fixtures/*.golden.csv -text
+*.xlsx binary
