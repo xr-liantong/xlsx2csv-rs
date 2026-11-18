@@ -6,3 +6,9 @@ fixtures/*.tmp
 tests/.tmp
 *.profraw
 fixtures/*.err
+fixtures/*.golden.csv
+!fixtures/f1-*.golden.csv
+!fixtures/f2-*.golden.csv
+!fixtures/f3-*.golden.csv
+!fixtures/f4-*.golden.csv
+!fixtures/f5-*.golden.csv
