@@ -1,0 +1,8 @@
+/target
+Cargo.lock.bak
+fixtures/*.xlsx
+fixtures/*.err
+fixtures/*.tmp
+tests/.tmp
+*.profraw
+fixtures/*.err

@@ -1,0 +1,14 @@
+id,name,note,"comma,field","quote""field",empty
+1,中文,emoji 😀🚀,"a,b","say ""hi""",
+2,"line
+break",tab	here,  leading,trailing  ,
+3,0123,,x;y,semi;colon,
+4,省略号…,Ünïcode,,  ,
+5,https://example.com/a?b=1&c=2,amp,"a""b,c",z,
+6,1234567,-42,0,3.5,
+7,,,,,
+8,  ,空格, nbsp,end,
+9,末行,tail,t,u,
+10,多语言,العربية,русский,日本語,
+11,emoji 👨‍👩‍👧‍👦,组合,a	b,"c
+d",
