@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: fmt
+        run: cargo fmt --check
+      - name: clippy
+        run: cargo clippy --release --all-targets -- -D warnings
+      - name: test
+        run: cargo test --release
+      - name: build
+        run: cargo build --release
+      # Fixtures are git-ignored (see KNOWN-GAPS.md, issue #1); the parity test
+      # skips when they are absent, so CI exercises the rest of the gate only.
