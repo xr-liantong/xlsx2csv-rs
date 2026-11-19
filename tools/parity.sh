@@ -108,6 +108,11 @@ check f9-shared f9-shared.e.golden.csv -e
 check_file_first f10-edges f10-edges.golden.csv
 check_file_first f10-edges f10-edges.qnonnumeric.golden.csv -q nonnumeric
 check_file_first f10-edges f10-edges.ff3.golden.csv --floatformat %.3f
+# Python's `%` operator, not printf: %e/%g keep two exponent digits and %g
+# strips mantissa zeros only.
+check_file_first f3-floats f3-floats.e.golden.csv --floatformat '%e'
+check_file_first f3-floats f3-floats.g.golden.csv --floatformat '%g'
+check_file_first f3-floats f3-floats.f0.golden.csv --floatformat '%.0f'
 
 echo "parity: $pass passed, $fail failed, $skip skipped"
 [ "$fail" -eq 0 ] || exit 1

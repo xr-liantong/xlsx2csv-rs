@@ -236,7 +236,13 @@ fn integer_repr(d: f64) -> String {
     }
 }
 
+/// Drop trailing fractional zeros (`6.020000e+23` before the exponent,
+/// `1.500000` in the fixed case). A value without a decimal point keeps every
+/// digit: `%g` of 100 is `100`, not `1`, and `-0.0` stays `-0`.
 fn strip_zeros(s: &str) -> String {
+    if !s.contains('.') {
+        return s.to_string();
+    }
     let t = s.trim_end_matches('0').trim_end_matches('.');
     if t.is_empty() || t == "-" {
         "0".to_string()
@@ -247,26 +253,131 @@ fn strip_zeros(s: &str) -> String {
 
 /// Python `%.Nf` subset: `%.15f`, `%f`, `%0.2f`.
 fn apply_percent_format(fmt: &str, d: f64) -> Result<String, String> {
+    // Python's `%` operator on a float: %[flags][width][.precision]<conv>.
+    // Only the float conversions are accepted; anything else fails loudly
+    // instead of silently differing from upstream.
     let body = fmt.strip_prefix('%').ok_or("format")?;
-    let spec = body.strip_suffix('f').ok_or("format")?;
-    // `%f` is six places; `%.3f` / `%10.2f` take the part after the dot,
-    // and `%.f` means zero places, exactly like Python's `%` operator.
-    let places: usize = match spec.split_once('.') {
-        Some((width, frac)) => {
-            if !width.chars().all(|c| c.is_ascii_digit()) {
-                return Err("format".to_string());
-            }
-            if frac.is_empty() {
-                0
-            } else if frac.chars().all(|c| c.is_ascii_digit()) {
-                frac.parse().map_err(|_| "format".to_string())?
+    let mut rest = body;
+    let (mut left, mut plus, mut space, mut zero) = (false, false, false, false);
+    while let Some(c) = rest.chars().next() {
+        match c {
+            '-' => left = true,
+            '+' => plus = true,
+            ' ' => space = true,
+            '0' => zero = true,
+            '#' => {}
+            _ => break,
+        }
+        rest = &rest[c.len_utf8()..];
+    }
+    let digits_len = rest.chars().take_while(char::is_ascii_digit).count();
+    let width: usize = if digits_len == 0 {
+        0
+    } else {
+        rest[..digits_len]
+            .parse()
+            .map_err(|_| "format".to_string())?
+    };
+    rest = &rest[digits_len..];
+    let mut precision: Option<usize> = None;
+    if let Some(after) = rest.strip_prefix('.') {
+        let n = after.chars().take_while(char::is_ascii_digit).count();
+        precision = Some(if n == 0 {
+            0
+        } else {
+            after[..n].parse().map_err(|_| "format".to_string())?
+        });
+        rest = &after[n..];
+    }
+    let mut chars = rest.chars();
+    let conv = chars.next().ok_or("format")?;
+    if chars.next().is_some() {
+        return Err("format".to_string());
+    }
+    let p = precision.unwrap_or(6);
+    let mut out = match conv {
+        'f' | 'F' => format!("{d:.p$}"),
+        'e' | 'E' => {
+            let s = python_exponent(&format!("{d:.p$e}"));
+            if conv == 'E' {
+                s.to_uppercase()
             } else {
-                return Err("format".to_string());
+                s
             }
         }
-        None => 6,
+        'g' | 'G' => {
+            let s = python_general(d, if p == 0 { 1 } else { p });
+            if conv == 'G' {
+                s.to_uppercase()
+            } else {
+                s
+            }
+        }
+        _ => return Err("format".to_string()),
     };
-    Ok(format!("{d:.places$}"))
+    if !out.starts_with('-') {
+        if plus {
+            out.insert(0, '+');
+        } else if space {
+            out.insert(0, ' ');
+        }
+    }
+    if out.len() < width {
+        let pad = width - out.len();
+        if left {
+            out.push_str(&" ".repeat(pad));
+        } else if zero {
+            let sign_len = usize::from(out.starts_with(['-', '+', ' ']));
+            let (head, tail) = out.split_at(sign_len);
+            out = format!("{head}{}{tail}", "0".repeat(pad));
+        } else {
+            out.insert_str(0, &" ".repeat(pad));
+        }
+    }
+    Ok(out)
+}
+
+/// C prints at least two exponent digits (`e-01`, `e+20`) and Rust does not.
+fn python_exponent(s: &str) -> String {
+    match s.find(['e', 'E']) {
+        Some(pos) => {
+            let (mantissa, exp) = s.split_at(pos);
+            format!("{mantissa}e{}", exponent_digits(&exp[1..]))
+        }
+        None => s.to_string(),
+    }
+}
+
+fn exponent_digits(exp: &str) -> String {
+    let (sign, digits) = match exp.strip_prefix('-') {
+        Some(d) => ('-', d),
+        None => ('+', exp.strip_prefix('+').unwrap_or(exp)),
+    };
+    format!("{sign}{digits:0>2}")
+}
+
+/// `%g`: shortest of `%e`/`%f` for the precision, trailing zeros stripped.
+/// The zeros belong to the mantissa, never to the exponent (`1e+20` must not
+/// decay into `1e+2`).
+fn python_general(d: f64, p: usize) -> String {
+    let exp = if d == 0.0 {
+        0
+    } else {
+        d.abs().log10().floor() as i32
+    };
+    if exp < -4 || exp >= p as i32 {
+        let s = format!("{d:.prec$e}", prec = p - 1);
+        match s.find('e') {
+            Some(pos) => {
+                let (mantissa, e) = s.split_at(pos);
+                format!("{}e{}", strip_zeros(mantissa), exponent_digits(&e[1..]))
+            }
+            None => s,
+        }
+    } else {
+        let places = (p as i32 - 1 - exp).max(0) as usize;
+        strip_zeros(&format!("{d:.places$}"))
+    }
 }
 
 fn parse_f64(s: &str) -> Result<f64, ()> {

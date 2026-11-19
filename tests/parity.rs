@@ -130,6 +130,25 @@ fn nonnumeric_quoting_matches_upstream() {
     );
 }
 
+/// `--floatformat` is Python's `%` operator on a float, not printf: `%e`
+/// always prints two exponent digits, `%g` strips mantissa zeros only.
+#[test]
+fn floatformat_conversions_match_upstream() {
+    for (golden, fmt) in [
+        ("f3-floats.e.golden.csv", "%e"),
+        ("f3-floats.g.golden.csv", "%g"),
+        ("f3-floats.f0.golden.csv", "%.0f"),
+    ] {
+        run_case("f3-floats", golden, |book, opts| {
+            let mut opts = opts.clone();
+            opts.floatformat = Some(fmt.to_string());
+            let mut buf = Vec::new();
+            book.convert_one(1, &opts, &mut buf).expect("convert");
+            buf
+        });
+    }
+}
+
 /// Negative serial fractions used to wrap the hour/minute fields through u32,
 /// and `--floatformat %.3f` used to ignore the precision.
 #[test]
