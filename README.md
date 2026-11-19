@@ -132,6 +132,29 @@ src/dates.rs    Excel serial -> date, format code translation
 src/csvw.rs     csv.writer-compatible quoting
 ```
 
+## Differential fuzz
+
+Hand-picked fixtures only cover what we thought of. `tools/fuzz_parity.py`
+builds random workbooks with openpyxl (1-3 sheets, hidden sheets and rows,
+merged ranges, fourteen number formats, CJK and emoji, embedded tabs and
+newlines, quotes) and runs both implementations under eighteen random flag
+combinations (`-d`, `-l`, `-q`, `--floatformat`, `-e`, `--no-line-breaks`,
+`-m`, `-i`, `--skipemptycolumns`, `--ignore-percentage`, `--sci-float`, `-f`,
+`-t`), comparing stdout bytes, stderr and exit codes.
+
+```sh
+python3 tools/fuzz_parity.py --cases 40 --seed 7
+# fuzz: 40 ok, 0 FAILED
+```
+
+It found the four bugs fixed in this release line and keeps them from coming
+back: negative serial fractions wrapping through `u32` in time formats,
+`--floatformat %.3f` ignoring its precision, `-q nonnumeric` quoting nearly
+nothing (CPython only exempts real `int`/`float` objects, and this port always
+hands the writer strings), and out-of-range serials in date formats.
+`--only <seed>` replays one case, `--keep-failures` leaves the failing pair in
+`fixtures/`.
+
 ## License
 
 MIT, see [LICENSE](LICENSE). Upstream LICENSE: MIT per PyPI metadata; the

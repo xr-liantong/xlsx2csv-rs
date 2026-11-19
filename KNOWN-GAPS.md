@@ -89,3 +89,26 @@ OAuth App to create or update workflow`), so a committed workflow block would
 make every push fail. CI 待接入，需 workflow scope，暂由 box 人工门禁替代：every
 release is gated by the four commands in README's Gate section, run on the box
 against the exact tree that is pushed.
+
+## Out-of-range serials in date formats
+
+A serial far outside the calendar (for example `1099511627776` under `m/d/yy`)
+makes upstream `datetime.timedelta` raise an uncaught `OverflowError`: exit 1,
+stdout truncated right after the last good cell, and a Python traceback on
+stderr. This port matches the exit code and the truncated stdout byte for byte,
+but writes one line instead of a traceback:
+
+```
+Error: potential invalid date format.
+```
+
+The traceback text is not worth reproducing; scripts that grep stderr for
+`OverflowError` should look at the exit code instead.
+
+## Fuzz coverage
+
+`tools/fuzz_parity.py` compares stdout, stderr and exit code, but only for the
+flag combinations it samples. Two cases are deliberately excluded from full
+comparison: upstream tracebacks (exit code and stdout only) and workbooks it
+cannot build (skipped). The sampled flags do not include `-c`, `-E`/`-I`,
+`--ignore-formats` or directory input; those are covered by fixtures instead.

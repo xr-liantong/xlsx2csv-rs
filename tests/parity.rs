@@ -5,6 +5,7 @@
 //! case is skipped when the input is absent — the gate is meaningful on the
 //! box, where the fixtures exist.
 
+use xlsx2csv_rs::csvw::Quoting;
 use xlsx2csv_rs::port::{ConvertOptions, Xlsx2csv};
 
 fn read_fixture(path: &str) -> Option<Vec<u8>> {
@@ -112,6 +113,41 @@ fn golden_bytes_match() {
 
 /// Directory input (`convert_recursive`): every `.xlsx` becomes a sibling
 /// `<name>csv`, and `--continue-on-error` walks past a file that is not a zip.
+/// `-q nonnumeric` quotes every field: CPython only leaves `int`/`float`
+/// objects unquoted, and xlsx2csv hands the writer strings.
+#[test]
+fn nonnumeric_quoting_matches_upstream() {
+    run_case(
+        "f10-edges",
+        "f10-edges.qnonnumeric.golden.csv",
+        |book, opts| {
+            let mut opts = opts.clone();
+            opts.quoting = Quoting::NonNumeric;
+            let mut buf = Vec::new();
+            book.convert_one(1, &opts, &mut buf).expect("convert");
+            buf
+        },
+    );
+}
+
+/// Negative serial fractions used to wrap the hour/minute fields through u32,
+/// and `--floatformat %.3f` used to ignore the precision.
+#[test]
+fn edge_values_match_upstream() {
+    run_case("f10-edges", "f10-edges.golden.csv", |book, opts| {
+        let mut buf = Vec::new();
+        book.convert_one(1, opts, &mut buf).expect("convert");
+        buf
+    });
+    run_case("f10-edges", "f10-edges.ff3.golden.csv", |book, opts| {
+        let mut opts = opts.clone();
+        opts.floatformat = Some("%.3f".to_string());
+        let mut buf = Vec::new();
+        book.convert_one(1, &opts, &mut buf).expect("convert");
+        buf
+    });
+}
+
 #[test]
 fn directory_input_recurses_and_continues() {
     if read_fixture("fixtures/f1-basic.xlsx").is_none()

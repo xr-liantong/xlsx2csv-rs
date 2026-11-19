@@ -52,11 +52,10 @@ impl<W: Write> CsvWriter<W> {
                     }
                 }
                 Quoting::NonNumeric => {
-                    if is_numeric(field) {
-                        line.push_str(field);
-                    } else {
-                        push_quoted(&mut line, field);
-                    }
+                    // CPython quotes everything that is not an `int`/`float`
+                    // *object*; this crate hands the writer strings, so every
+                    // field is quoted, the empty one included.
+                    push_quoted(&mut line, field);
                 }
                 Quoting::None => {
                     if field.contains(self.delimiter)
@@ -112,11 +111,6 @@ fn push_quoted(line: &mut String, field: &str) {
         line.push(c);
     }
     line.push('"');
-}
-
-fn is_numeric(field: &str) -> bool {
-    let t = field.trim();
-    !t.is_empty() && lexical_core::parse::<f64>(t.as_bytes()).is_ok()
 }
 
 #[cfg(test)]

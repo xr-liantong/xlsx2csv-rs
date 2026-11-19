@@ -278,6 +278,34 @@ def f8_merged():
     return path
 
 
+def f10_edges():
+    """Values that the differential fuzz turned into bugs.
+
+    A negative fraction used to wrap the time fields to u32 (printing
+    ``4294967284:00``), ``--floatformat %.3f`` ignored the precision, and a
+    date serial past year 9999 makes upstream raise an OverflowError.
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "edges"
+    ws["A1"] = 0
+    ws["A1"].number_format = "0%"
+    ws["B1"] = -0.5
+    ws["B1"].number_format = "hh:mm:ss"
+    ws["A2"] = 0.9995
+    ws["A2"].number_format = "0.00"
+    ws["B2"] = -0.1266871070718498
+    ws["B2"].number_format = "#,##0"
+    ws["A3"] = -651.0
+    ws["A3"].number_format = "yyyy-mm-dd"
+    ws["B3"] = 434.8171585565365
+    ws["B3"].number_format = "General"
+    ws["A4"] = "text"
+    ws["B4"] = -0.135
+    ws["B4"].number_format = "h:mm"
+    save(wb, "f10-edges.xlsx")
+
+
 def f9_shared_strings():
     """`-e` fixture: real sharedStrings table. openpyxl 3.1.5 emits inline
     strings, so the cells are rewritten to `t="s"` and a sharedStrings part is
@@ -355,6 +383,7 @@ def main(argv):
     f7_hyperlinks()
     f8_merged()
     f9_shared_strings()
+    f10_edges()
     for path in PATHS:
         normalize(path)
 

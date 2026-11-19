@@ -103,6 +103,12 @@ check_file_first f4-sheets f4-sheets.e-s.golden.csv -a -E '^S'
 check f9-shared f9-shared.golden.csv
 check f9-shared f9-shared.e.golden.csv -e
 
+# Values the differential fuzz turned into bugs: negative fractions in time
+# formats, `--floatformat` precision, and the QUOTE_NONNUMERIC rule.
+check_file_first f10-edges f10-edges.golden.csv
+check_file_first f10-edges f10-edges.qnonnumeric.golden.csv -q nonnumeric
+check_file_first f10-edges f10-edges.ff3.golden.csv --floatformat %.3f
+
 echo "parity: $pass passed, $fail failed, $skip skipped"
 [ "$fail" -eq 0 ] || exit 1
 exit 0

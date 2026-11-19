@@ -136,6 +136,17 @@ fn format_date(
     opts: &FmtOptions<'_>,
 ) -> Result<String, PortError> {
     let v = parse_f64(data).map_err(|_| PortError::Value)?;
+    // `datetime.datetime(1899, 12, 30) + timedelta(days=v)` overflows outside
+    // year 1..9999; upstream lets the OverflowError escape as a traceback.
+    // We stop at the same cell with the same exit code and partial output.
+    let (min_serial, max_serial) = if date1904 {
+        (-24_107.0_f64, 2_957_004.0_f64)
+    } else {
+        (-693_593.0_f64, 2_958_466.0_f64)
+    };
+    if !(min_serial..max_serial).contains(&v) {
+        return Err(PortError::Value);
+    }
     let dt = serial_to_datetime(v, date1904);
     match opts.dateformat {
         Some(f) => Ok(strftime(&dt, f)),
@@ -147,12 +158,15 @@ fn format_date(
 
 fn format_time(data: &str, opts: &FmtOptions<'_>) -> Result<String, PortError> {
     let v = parse_f64(data).map_err(|_| PortError::Value)?;
-    let frac = v % 1.0;
+    // Python's `%` floors: `-0.135 % 1 == 0.865`, while Rust's `%` truncates
+    // and gives `-0.135`; the negative path used to wrap the hour/minute
+    // fields to u32 and print `4294967284:00`.
+    let frac = v - v.floor();
     let micros = (frac * 86_400_000_000.0).round_ties_even() as i64;
     let t = micros / 1_000_000;
-    let h = ((t / 3600) % 24) as u32;
-    let m = ((t / 60) % 60) as u32;
-    let s = (t % 60) as u32;
+    let h = (t / 3600).rem_euclid(24) as u32;
+    let m = (t / 60).rem_euclid(60) as u32;
+    let s = t.rem_euclid(60) as u32;
     Ok(strftime(&DateTime::from_hms(h, m, s), opts.timeformat))
 }
 
@@ -234,15 +248,24 @@ fn strip_zeros(s: &str) -> String {
 /// Python `%.Nf` subset: `%.15f`, `%f`, `%0.2f`.
 fn apply_percent_format(fmt: &str, d: f64) -> Result<String, String> {
     let body = fmt.strip_prefix('%').ok_or("format")?;
-    let digits: String = body.chars().take_while(|c| c.is_ascii_digit()).collect();
-    let places: usize = if digits.is_empty() {
-        6
-    } else {
-        digits.parse().map_err(|_| "format")?
+    let spec = body.strip_suffix('f').ok_or("format")?;
+    // `%f` is six places; `%.3f` / `%10.2f` take the part after the dot,
+    // and `%.f` means zero places, exactly like Python's `%` operator.
+    let places: usize = match spec.split_once('.') {
+        Some((width, frac)) => {
+            if !width.chars().all(|c| c.is_ascii_digit()) {
+                return Err("format".to_string());
+            }
+            if frac.is_empty() {
+                0
+            } else if frac.chars().all(|c| c.is_ascii_digit()) {
+                frac.parse().map_err(|_| "format".to_string())?
+            } else {
+                return Err("format".to_string());
+            }
+        }
+        None => 6,
     };
-    if !body.ends_with('f') {
-        return Err("format".to_string());
-    }
     Ok(format!("{d:.places$}"))
 }
 
