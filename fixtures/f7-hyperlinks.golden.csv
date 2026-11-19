@@ -1,0 +1,8 @@
+<a href='https://example.com/a?b=1'>site</a>,plain
+<a href='https://example.org/路径'>中文链接</a>,
+<a href='https://example.net/empty'>https://example.net/empty</a>,
+<a href='mailto:x@example.com'>mail</a>,
+<a href='https://example.com/day'>2023-03-15</a>,
+<a href='https://example.com/pct'>50.00%</a>,
+<a href='https://example.com/pct'>42</a>,
+<a href='https://example.com/tab'>tab	inside</a>,

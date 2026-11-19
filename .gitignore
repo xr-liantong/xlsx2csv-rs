@@ -12,4 +12,9 @@ fixtures/*.golden.csv
 !fixtures/f3-*.golden.csv
 !fixtures/f4-*.golden.csv
 !fixtures/f5-*.golden.csv
+!fixtures/f7-*.golden.csv
+!fixtures/f8-*.golden.csv
+!fixtures/f9-*.golden.csv
+# f6-big.golden.csv stays ignored: 3.3 MB, regenerated from the upstream
+# script (see KNOWN-GAPS), so a clean clone skips that one case only.
 __pycache__/
