@@ -106,7 +106,7 @@ generation step before the end-to-end tests can compare anything:
 ```
 python3 -m pip install openpyxl          # only dependency of the generator
 python3 fixtures/gen_fixtures.py         # writes fixtures/*.xlsx, reproducible
-tools/parity.sh                          # 20 cases against fixtures/*.golden.csv
+tools/parity.sh                          # 30 cases against fixtures/*.golden.csv
 ```
 
 `gen_fixtures.py` takes an optional output directory (`python3
@@ -114,9 +114,27 @@ fixtures/gen_fixtures.py /tmp/fx`) and produces byte-identical workbooks on
 every run: `docProps/core.xml` and the zip entry timestamps are pinned, so two
 runs hash the same. `tools/parity.sh` takes a binary and a fixtures directory as
 optional arguments (`tools/parity.sh /tmp/fx/xlsx2csv-rs /tmp/fx`) and prints
-`N passed, M failed, K skipped`; a case is skipped only when its input or
-golden is absent. `f6-big.golden.csv` (3.3 MB) is not tracked by design, so on
-a clean clone the expected line is `20 passed, 0 failed, 1 skipped`.
+`N passed, M failed, K skipped, L unexpected skip(s)`.
+
+A case skips when its input or golden is absent, but only cases named in
+`ALLOW_SKIP` may do so quietly. `f6-big.golden.csv` is 3.3 MB and stays out of
+git by design, so `f6-big` is the whole allowlist:
+
+```
+$ git archive HEAD | tar -x -C /tmp/c1 && cd /tmp/c1
+$ python3 fixtures/gen_fixtures.py && bash tools/parity.sh; echo rc=$?
+parity: 29 passed, 0 failed, 1 skipped, 0 unexpected skip(s)
+rc=0
+
+$ mv fixtures/f8-merged.xlsx /tmp/ && bash tools/parity.sh; echo rc=$?
+parity: 27 passed, 0 failed, 1 skipped, 2 unexpected skip(s)
+parity: unexpected skip -- a fixture or golden is missing (allowed: f6-big)
+rc=2
+```
+
+Any other skip is a lost fixture or golden, and the run exits 2 instead of 0,
+so a silently shrinking suite cannot pass CI. `ALLOW_SKIP="f6-big other-case"`
+widens the allowlist when a second large golden is added on purpose.
 
 ## Layout
 
