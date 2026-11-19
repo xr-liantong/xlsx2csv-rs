@@ -260,3 +260,58 @@ fn directory_input_recurses_and_continues() {
 
     std::fs::remove_dir_all(&root).ok();
 }
+
+/// The usage/error text is what a user sees first, and argparse's exact shape
+/// (wrapped block, `prog: error:` prefix, positional group on its own line) is
+/// part of the port's promise. Each assertion below is one byte-level property
+/// that used to be wrong before #5.
+#[test]
+fn stderr_matches_argparse_shape() {
+    let bin = env!("CARGO_BIN_EXE_xlsx2csv-rs");
+    let prog = "xlsx2csv-rs";
+
+    let out = std::process::Command::new(bin).output().expect("run");
+    assert_eq!(out.status.code(), Some(2));
+    let err = String::from_utf8(out.stderr).expect("utf8");
+    assert!(
+        err.starts_with(&format!("usage: {prog} [-h] [-v] [-a]")),
+        "{err}"
+    );
+    assert!(err.ends_with("the following arguments are required: xlsxfile\n"));
+    let indent = " ".repeat("usage: ".len() + prog.len() + 1);
+    for line in err.lines().filter(|l| !l.starts_with("usage: ")) {
+        if line.starts_with(&indent) {
+            assert!(line.len() <= 78, "usage line too long: {line:?}");
+        }
+    }
+    // argparse starts the positional group on its own line.
+    assert!(
+        err.contains(&format!("\n{indent}xlsxfile [outfile]\n")),
+        "{err}"
+    );
+    // ...and prefixes the error with the program name.
+    assert!(err.contains(&format!("{prog}: error: ")), "{err}");
+
+    let out = std::process::Command::new(bin)
+        .arg("-s")
+        .output()
+        .expect("run");
+    assert_eq!(out.status.code(), Some(2));
+    let err = String::from_utf8(out.stderr).expect("utf8");
+    assert!(
+        err.contains("argument -s/--sheet: expected one argument"),
+        "argparse names every spelling of the option: {err}"
+    );
+
+    // NB: without a positional argparse refuses first, so give it a filename;
+    // quoting is validated before the file is opened, so it need not exist.
+    let out = std::process::Command::new(bin)
+        .arg("-q")
+        .arg("bogus")
+        .arg("does-not-exist.xlsx")
+        .output()
+        .expect("run");
+    assert_eq!(out.status.code(), Some(1));
+    // sys.exit(str(e) + "\n") leaves two newlines, and that is the whole message.
+    assert_eq!(out.stderr, b"error: invalid quoting\n\n");
+}
