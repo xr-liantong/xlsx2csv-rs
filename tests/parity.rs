@@ -18,11 +18,25 @@ fn run_case(
     golden: &str,
     f: impl FnOnce(&mut Xlsx2csv, &ConvertOptions) -> Vec<u8>,
 ) {
-    let Some(_) = read_fixture(&format!("fixtures/{fixture}.xlsx")) else {
-        eprintln!("skip {fixture}: fixtures/{fixture}.xlsx missing");
-        return;
+    // A missing input is a broken gate, not a pass: `f6-big`'s golden is the
+    // only file allowed to be absent (it is 3.3 MB and not tracked).
+    if read_fixture(&format!("fixtures/{fixture}.xlsx")).is_none() {
+        if std::env::var_os("XLSX2CSV_SKIP_MISSING_FIXTURES").is_some() {
+            eprintln!("skip {fixture}: fixtures/{fixture}.xlsx missing");
+            return;
+        }
+        panic!(
+            "fixtures/{fixture}.xlsx is missing: run `python3 fixtures/gen_fixtures.py`              (or set XLSX2CSV_SKIP_MISSING_FIXTURES=1)"
+        );
+    }
+    let want = match std::fs::read(format!("fixtures/{golden}")) {
+        Ok(bytes) => bytes,
+        Err(_) if fixture == "f6-big" => {
+            eprintln!("skip f6-big: fixtures/{golden} is not tracked");
+            return;
+        }
+        Err(err) => panic!("fixtures/{golden}: {err}"),
     };
-    let want = std::fs::read(format!("fixtures/{golden}")).expect("golden readable");
     let opts = ConvertOptions::default();
     let mut book = Xlsx2csv::open(&format!("fixtures/{fixture}.xlsx")).expect("open fixture");
     let got = f(&mut book, &opts);
@@ -40,6 +54,39 @@ fn run_case(
 
 #[test]
 fn golden_bytes_match() {
+    run_case("f6-big", "f6-big.golden.csv", |book, opts| {
+        let mut buf = Vec::new();
+        book.convert_one(1, opts, &mut buf).expect("convert");
+        buf
+    });
+    run_case("f1-basic", "f1-basic.d-semi.golden.csv", |book, opts| {
+        let mut opts = opts.clone();
+        opts.delimiter = ';';
+        let mut buf = Vec::new();
+        book.convert_one(1, &opts, &mut buf).expect("convert");
+        buf
+    });
+    run_case("f4-sheets", "f4-sheets.s2.golden.csv", |book, opts| {
+        let mut opts = opts.clone();
+        opts.sheet_id = 2;
+        let mut buf = Vec::new();
+        book.convert_one(2, &opts, &mut buf).expect("convert");
+        buf
+    });
+    run_case("f4-sheets", "f4-sheets.n.golden.csv", |book, opts| {
+        let mut opts = opts.clone();
+        opts.sheet_name = Some("S2 名称".to_string());
+        let mut buf = Vec::new();
+        book.convert_one(2, &opts, &mut buf).expect("convert");
+        buf
+    });
+    run_case("f5-quirks", "f5-quirks.nlb.golden.csv", |book, opts| {
+        let mut opts = opts.clone();
+        opts.no_line_breaks = true;
+        let mut buf = Vec::new();
+        book.convert_one(1, &opts, &mut buf).expect("convert");
+        buf
+    });
     run_case("f1-basic", "f1-basic.golden.csv", |book, opts| {
         let mut buf = Vec::new();
         book.convert_one(1, opts, &mut buf).expect("convert");

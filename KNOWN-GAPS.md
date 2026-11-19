@@ -156,3 +156,13 @@ back as an input on the next `getdents` batch and the run died with
 `Invalid xlsx file: <dir>/a.csv` (rc 1 instead of upstream's rc 0).
 A *second* run over the same tree still fails on the produced `.csv`, exactly
 like upstream.
+
+## Integration test coverage (#6, fixed)
+
+`tests/parity.rs` now pins 15 golden cases (`f1`, `f1 -d ;`, `f2`, `f3`, `f4`,
+`f4 -s 2`, `f4 -n`, `f5 --no-line-breaks`, `f6-big`, `f7` ×2, `f8` ×2,
+`f9`/`f11` ×2, `f10` ×3, encodings ×3). A **missing fixture no longer skips
+silently**: the test panics with the `gen_fixtures.py` hint unless
+`XLSX2CSV_SKIP_MISSING_FIXTURES=1` is set for a local run without Python.
+The only tolerated absence is `fixtures/f6-big.golden.csv` (3.3 MB, untracked),
+which mirrors `ALLOW_SKIP=f6-big` in `tools/parity.sh`.

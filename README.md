@@ -111,7 +111,8 @@ tools/parity.sh                          # 32 cases against fixtures/*.golden.cs
 
 The 32 cases are 20 `check` (candidate binary, expected golden), 9
 `check_file_first` (input path before a `nargs='+'` option, golden tracked)
-and 3 `check_enc` (`-c` output encodings). `f6-big`'s golden is not tracked, so
+and 3 `check_enc` (`-c` output encodings). `cargo test` pins 15 of them as
+golden cases and fails — instead of skipping — when a fixture is missing. `f6-big`'s golden is not tracked, so
 a clean clone reports 31 passed and 1 skipped; see `ALLOW_SKIP` below.
 
 `gen_fixtures.py` takes an optional output directory (`python3
