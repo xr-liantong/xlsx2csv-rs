@@ -146,3 +146,13 @@ A *literal* `\r` (0x0D) in a text node is normalised to `\n` (XML 1.0 §2.11)
 before entities are decoded, so `&#13;` still yields a real CR — same split as
 expat/upstream. Covered by `fixtures/f11-literal-cr.xlsx` (literal CR) and
 `fixtures/f9-shared.xlsx` (character reference), both with and without `-e`.
+
+## Directory input snapshots its listing (#8, fixed)
+
+`convert_recursive` walks `os.listdir(path)`, a snapshot taken before any output
+is written. The Rust walk now collects the directory entries first for the same
+reason: on a lazy `read_dir` the `.csv` just written next to its `.xlsx` came
+back as an input on the next `getdents` batch and the run died with
+`Invalid xlsx file: <dir>/a.csv` (rc 1 instead of upstream's rc 0).
+A *second* run over the same tree still fails on the produced `.csv`, exactly
+like upstream.

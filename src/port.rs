@@ -359,8 +359,10 @@ pub fn run(input: &str, opts: &ConvertOptions) -> Result<(), PortError> {
 /// upstream `convert_recursive`: every file in the tree becomes `<name>csv`
 /// next to itself, unless an outfile (or an outfile directory) was given.
 fn run_dir(dir: &str, opts: &ConvertOptions) -> Result<(), PortError> {
-    for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
+    // upstream uses `os.listdir`, a snapshot: outputs written into this very
+    // directory are not processed again (issue #8).
+    let entries: Vec<std::fs::DirEntry> = std::fs::read_dir(dir)?.collect::<Result<Vec<_>, _>>()?;
+    for entry in entries {
         let full = entry.path();
         let full = full.to_string_lossy().to_string();
         if Path::new(&full).is_dir() {
