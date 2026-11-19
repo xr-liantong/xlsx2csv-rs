@@ -12,6 +12,7 @@ use std::path::Path;
 use crate::csvw::{CsvWriter, Quoting};
 use crate::errors::PortError;
 use crate::ooxml::{ContentTypes, Package, Relationships, Workbook};
+use crate::pattern::{any_matches, none_matches};
 use crate::sheet::{collect_hyperlinks, convert_sheet, SheetContext, SheetOptions};
 use crate::sst::SharedStrings;
 use crate::styles::Styles;
@@ -35,6 +36,10 @@ pub struct ConvertOptions {
     pub ignore_percentage: bool,
     pub ignore_formats: Vec<String>,
     pub exclude_hidden_sheets: bool,
+    /// `-I`: keep only sheets whose name matches one of these (empty = all).
+    pub include_patterns: Vec<String>,
+    /// `-E`: drop sheets whose name matches one of these.
+    pub exclude_patterns: Vec<String>,
     pub hyperlinks: bool,
     pub sheet_id: u32,
     pub sheet_name: Option<String>,
@@ -59,6 +64,8 @@ impl Default for ConvertOptions {
             ignore_percentage: false,
             ignore_formats: vec![],
             exclude_hidden_sheets: false,
+            include_patterns: vec!["^.*$".to_string()],
+            exclude_patterns: vec![],
             hyperlinks: false,
             sheet_id: 1,
             sheet_name: None,
@@ -241,6 +248,12 @@ impl Xlsx2csv {
             if opts.exclude_hidden_sheets
                 && matches!(state.as_deref(), Some("hidden") | Some("veryHidden"))
             {
+                continue;
+            }
+            if !any_matches(&opts.include_patterns, &name)? {
+                continue;
+            }
+            if !none_matches(&opts.exclude_patterns, &name)? {
                 continue;
             }
             if !opts.sheet_delimiter.is_empty() {

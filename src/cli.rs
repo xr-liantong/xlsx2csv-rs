@@ -119,13 +119,21 @@ pub fn parse(argv: &[String]) -> Outcome {
             "--include-hidden-rows" => include_hidden_rows = true,
             "--hyperlinks" => opts.hyperlinks = true,
             "--continue-on-error" => {}
-            "-m"
-            | "--merge-cells"
-            | "--no-line-breaks"
-            | "-E"
-            | "--exclude_sheet_pattern"
-            | "-I"
-            | "--include_sheet_pattern" => {
+            "-E" | "--exclude_sheet_pattern" => {
+                opts.exclude_patterns =
+                    match take_many(&toks, &mut used, &mut j, inline.clone(), &name) {
+                        Ok(v) => v,
+                        Err(e) => return e,
+                    };
+            }
+            "-I" | "--include_sheet_pattern" => {
+                opts.include_patterns =
+                    match take_many(&toks, &mut used, &mut j, inline.clone(), &name) {
+                        Ok(v) => v,
+                        Err(e) => return e,
+                    };
+            }
+            "-m" | "--merge-cells" | "--no-line-breaks" => {
                 return Outcome::Fatal(format!("error: option {name} not implemented yet"));
             }
             "-c" | "--outputencoding" => outputencoding = need!(),
@@ -223,6 +231,31 @@ pub fn parse(argv: &[String]) -> Outcome {
         input: positionals[0].clone(),
         opts,
     }))
+}
+
+/// `nargs='+'`: one or more values, stopping at the next option token.
+fn take_many(
+    toks: &[Tok],
+    used: &mut [bool],
+    j: &mut usize,
+    inline: Option<String>,
+    name: &str,
+) -> Result<Vec<String>, Outcome> {
+    if let Some(v) = inline {
+        return Ok(vec![v]);
+    }
+    let mut out = Vec::new();
+    while *j < toks.len() && toks[*j].positional && !used[*j] {
+        out.push(toks[*j].name.clone());
+        used[*j] = true;
+        *j += 1;
+    }
+    if out.is_empty() {
+        return Err(Outcome::Usage(format!(
+            "argument {name}: expected at least one argument"
+        )));
+    }
+    Ok(out)
 }
 
 fn take_value(

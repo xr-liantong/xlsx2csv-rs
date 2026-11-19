@@ -29,6 +29,8 @@ pub enum PortError {
     InputNotFound,
     /// a feature this build does not implement yet.
     Unsupported(&'static str),
+    /// a `-I` / `-E` pattern outside the supported `re` subset.
+    Pattern(String),
 }
 
 impl PortError {
@@ -60,6 +62,7 @@ impl fmt::Display for PortError {
             PortError::OutFileExists(p) => write!(f, "File {p} already exists!"),
             PortError::InputNotFound => write!(f, "Input file not found!"),
             PortError::Unsupported(m) => write!(f, "unsupported: {m}"),
+            PortError::Pattern(m) => write!(f, "{m}"),
         }
     }
 }

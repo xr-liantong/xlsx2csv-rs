@@ -10,6 +10,39 @@ set -u
 BIN=${1:-target/release/xlsx2csv-rs}
 FIX=${2:-fixtures}
 
+# `nargs='+'` options swallow a trailing path, so these cases put the input first,
+# the way argparse expects: `xlsx2csv <file> -I <pattern>`.
+check_file_first() {
+    fixture=$1
+    golden=$2
+    shift 2
+    xlsx="$FIX/$fixture.xlsx"
+    want="$FIX/$golden"
+    if [ ! -f "$xlsx" ] || [ ! -f "$want" ]; then
+        echo "SKIP $fixture $* (missing fixture or golden)"
+        skip=$((skip + 1))
+        return
+    fi
+    if [ -n "${UPSTREAM:-}" ]; then
+        $UPSTREAM "$xlsx" "$@" >"$tmp/want" 2>/dev/null || true
+        if ! cmp -s "$tmp/want" "$want"; then
+            echo "FAIL $fixture $* -> golden differs from a fresh upstream run"
+            fail=$((fail + 1))
+            return
+        fi
+    fi
+    "$BIN" "$xlsx" "$@" >"$tmp/got" 2>"$tmp/err"
+    rc=$?
+    if [ "$rc" -eq 0 ] && cmp -s "$tmp/got" "$want"; then
+        echo "PASS $fixture $* -> $golden"
+        pass=$((pass + 1))
+    else
+        off=$(cmp "$tmp/got" "$want" 2>&1 | head -1)
+        echo "FAIL $fixture $* -> $golden (rc=$rc) $off"
+        fail=$((fail + 1))
+    fi
+}
+
 [ -x "$BIN" ] || { echo "parity: candidate not executable: $BIN" >&2; exit 2; }
 [ -d "$FIX" ] || { echo "parity: fixtures dir missing: $FIX" >&2; exit 2; }
 
@@ -60,6 +93,9 @@ check f5-quirks f5-quirks.golden.csv
 check f6-big f6-big.golden.csv
 check f7-hyperlinks f7-hyperlinks.golden.csv --hyperlinks
 check f7-hyperlinks f7-hyperlinks.plain.golden.csv
+check_file_first f4-sheets f4-sheets.i-s2.golden.csv -a -I '^S2'
+check_file_first f4-sheets f4-sheets.i-two.golden.csv -a -I S1 S2
+check_file_first f4-sheets f4-sheets.e-s.golden.csv -a -E '^S'
 
 echo "parity: $pass passed, $fail failed, $skip skipped"
 [ "$fail" -eq 0 ] || exit 1
