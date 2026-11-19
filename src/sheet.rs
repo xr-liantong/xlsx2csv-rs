@@ -32,6 +32,8 @@ pub struct SheetOptions<'a> {
     pub hyperlinks: HashMap<String, String>,
     /// `cell id -> top-left cell id`, from `<mergeCells>` (`-m`).
     pub merged: HashMap<String, String>,
+    /// `--no-line-breaks`: `\r`, `\n` and `\t` become spaces.
+    pub no_line_breaks: bool,
 }
 
 pub struct SheetContext<'a> {
@@ -167,6 +169,7 @@ pub fn convert_sheet<W: Write>(
                                 &cell_id,
                                 value,
                             )?;
+                            value = squash_line_breaks(&ctx.options, value);
                             store_cell(&mut st, cell_letters, col_index, value);
                             in_cell = false;
                         }
@@ -207,6 +210,7 @@ pub fn convert_sheet<W: Write>(
                         // top-left cell's already-wrapped value.
                         value =
                             apply_merge(&ctx.options.merged, &mut merged_values, &cell_id, value)?;
+                        value = squash_line_breaks(&ctx.options, value);
                         store_cell(&mut st, cell_letters, col_index, value);
                     }
                     in_cell = false;
@@ -254,6 +258,14 @@ fn apply_merge(
         }),
         None => Ok(value),
     }
+}
+
+/// upstream `handleEndElement`: `--no-line-breaks` maps line breaks to spaces.
+fn squash_line_breaks(options: &SheetOptions, value: String) -> String {
+    if !options.no_line_breaks {
+        return value;
+    }
+    value.replace(['\r', '\n', '\t'], " ")
 }
 
 /// upstream `set_merge_cells`: read `<mergeCells>` straight out of the sheet

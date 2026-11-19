@@ -134,9 +134,7 @@ pub fn parse(argv: &[String]) -> Outcome {
                     };
             }
             "-m" | "--merge-cells" => opts.merge_cells = true,
-            "--no-line-breaks" => {
-                return Outcome::Fatal(format!("error: option {name} not implemented yet"));
-            }
+            "--no-line-breaks" => opts.no_line_breaks = true,
             "-c" | "--outputencoding" => outputencoding = need!(),
             "-d" | "--delimiter" => delimiter = need!(),
             "-f" | "--dateformat" => opts.dateformat = Some(need!()),

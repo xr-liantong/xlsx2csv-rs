@@ -4,11 +4,11 @@ Acceptance for v0.1.0: byte-identical output to upstream 0.8.6 on the ten
 golden cases in `fixtures/`. Everything below is outside that net, either
 because it is unimplemented or because no fixture covers it yet.
 
-## Not implemented (exit 1 with `not implemented yet`)
+## Not implemented
 
-| option | upstream behaviour |
-|---|---|
-| `--no-line-breaks` | strip newlines inside cell text |
+Nothing: every upstream option is parsed. `-c` and `-e` behave differently
+(see below).
+
 
 `--hyperlinks` is implemented and covered by `fixtures/f7-hyperlinks.xlsx`
 (single-cell refs, an `A6:A7` range ref, unicode target, empty cell, mailto,
@@ -21,6 +21,10 @@ alternation or `{m,n}` are rejected with exit 1 and a message naming the
 pattern, instead of silently selecting different sheets. `-E`/`-I` only filter
 the all-sheets mode (`-a`), exactly like upstream, and take their values before
 the input path because they are `nargs='+'`.
+
+`--no-line-breaks` is implemented: `\r`, `\n` and `\t` inside a cell value
+become spaces, after merge substitution and hyperlink wrapping, as upstream
+does it.
 
 `-m` / `--merge-cells` is implemented: every cell of a `ref="A1:B2"` range takes
 the top-left cell's already-wrapped value, exactly like upstream. Unlike

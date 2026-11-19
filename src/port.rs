@@ -43,6 +43,8 @@ pub struct ConvertOptions {
     pub hyperlinks: bool,
     /// `-m`: fill merged followers with the top-left cell's value.
     pub merge_cells: bool,
+    /// `--no-line-breaks`: line breaks and tabs inside a cell become spaces.
+    pub no_line_breaks: bool,
     pub sheet_id: u32,
     pub sheet_name: Option<String>,
     pub out_path: Option<String>,
@@ -70,6 +72,7 @@ impl Default for ConvertOptions {
             exclude_patterns: vec![],
             hyperlinks: false,
             merge_cells: false,
+            no_line_breaks: false,
             sheet_id: 1,
             sheet_name: None,
             out_path: None,
@@ -220,6 +223,7 @@ impl Xlsx2csv {
             skip_empty_columns: opts.skip_empty_columns,
             hyperlinks,
             merged,
+            no_line_breaks: opts.no_line_breaks,
         };
         let ctx = SheetContext {
             styles: &self.styles,
