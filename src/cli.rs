@@ -118,7 +118,7 @@ pub fn parse(argv: &[String]) -> Outcome {
             "--exclude_hidden_sheets" => opts.exclude_hidden_sheets = true,
             "--include-hidden-rows" => include_hidden_rows = true,
             "--hyperlinks" => opts.hyperlinks = true,
-            "--continue-on-error" => {}
+            "--continue-on-error" => opts.continue_on_error = true,
             "-E" | "--exclude_sheet_pattern" => {
                 opts.exclude_patterns =
                     match take_many(&toks, &mut used, &mut j, inline.clone(), &name) {

@@ -39,7 +39,13 @@ the terminator does not contain it; `fixtures/f9-shared.xlsx` covers that.
 | option | state |
 |---|---|
 | `-c`, `--outputencoding` | parsed, output is always UTF-8 |
-| directory as input | upstream converts every file recursively; we exit 1 |
+
+Directory input is implemented (`convert_recursive`): every file in the tree
+becomes `<name>csv` next to itself (upstream's `[:-4] + "csv"` naming, so a
+`README.txt` becomes `READMEcsv`), `--continue-on-error` walks past a file that
+is not a zip, and an outfile directory collects the results. Upstream lists
+entries in filesystem order, so the order of the `Converting ... to ...` lines
+is not part of the contract.
 
 ## `-e` / `--escape`
 

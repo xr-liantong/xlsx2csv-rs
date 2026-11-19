@@ -45,6 +45,8 @@ pub struct ConvertOptions {
     pub merge_cells: bool,
     /// `--no-line-breaks`: line breaks and tabs inside a cell become spaces.
     pub no_line_breaks: bool,
+    /// `--continue-on-error`: directory mode keeps going after a bad file.
+    pub continue_on_error: bool,
     pub sheet_id: u32,
     pub sheet_name: Option<String>,
     pub out_path: Option<String>,
@@ -73,6 +75,7 @@ impl Default for ConvertOptions {
             hyperlinks: false,
             merge_cells: false,
             no_line_breaks: false,
+            continue_on_error: false,
             sheet_id: 1,
             sheet_name: None,
             out_path: None,
@@ -336,12 +339,59 @@ pub fn convert(input: &str, opts: &ConvertOptions) -> Result<(), PortError> {
 /// CLI driver: upstream `main` after argument decoding.
 pub fn run(input: &str, opts: &ConvertOptions) -> Result<(), PortError> {
     if Path::new(input).is_dir() {
-        return Err(PortError::Unsupported("directory input"));
+        return run_dir(input, opts);
     }
     if input != "-" && !Path::new(input).exists() {
         return Err(PortError::InputNotFound);
     }
+    run_one(input, opts)
+}
 
+/// upstream `convert_recursive`: every file in the tree becomes `<name>csv`
+/// next to itself, unless an outfile (or an outfile directory) was given.
+fn run_dir(dir: &str, opts: &ConvertOptions) -> Result<(), PortError> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let full = entry.path();
+        let full = full.to_string_lossy().to_string();
+        if Path::new(&full).is_dir() {
+            run_dir(&full, opts)?;
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        let out = match opts.out_path.as_deref() {
+            None => format!("{}csv", drop_tail(&full, 4)),
+            Some(path) if Path::new(path).is_dir() => Path::new(path)
+                .join(format!("{}csv", drop_tail(&name, 4)))
+                .to_string_lossy()
+                .to_string(),
+            Some(path) => path.to_string(),
+        };
+        println!("Converting {full} to {out}");
+        let mut sub = opts.clone();
+        sub.out_path = Some(out.clone());
+        if let Err(e) = run_one(&full, &sub) {
+            if opts.continue_on_error {
+                eprintln!("ERROR processing file '{full}': {e}");
+                continue;
+            }
+            return Err(e);
+        }
+    }
+    Ok(())
+}
+
+/// Python `s[:-n]` for `str` (character based, not bytes).
+fn drop_tail(s: &str, n: usize) -> &str {
+    let chars = s.chars().count();
+    if chars <= n {
+        return "";
+    }
+    let cut = s.char_indices().nth(chars - n).map(|(i, _)| i).unwrap_or(0);
+    &s[..cut]
+}
+
+fn run_one(input: &str, opts: &ConvertOptions) -> Result<(), PortError> {
     let mut book = Xlsx2csv::open(input)?;
 
     // upstream main: `if options.sheetname: sheetid = getSheetIdByName(...)`

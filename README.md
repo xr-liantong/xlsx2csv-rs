@@ -83,6 +83,10 @@ patterns, `-m/--merge-cells`, `--hyperlinks`, `--no-line-breaks`,
 `--exclude_hidden_sheets`, `--include-hidden-rows`, `-l/--lineterminator`,
 `-p/--sheetdelimiter`, `-q/--quoting`, `-h/--help`, `-v/--version`.
 
+A directory as input converts every file inside it to `<name>csv` next to the
+source (or into the outfile directory); `--continue-on-error` keeps walking
+after a file that is not a zip.
+
 Exit codes: `0` success, `1` runtime failure, `2` usage error.
 
 ## Build and test

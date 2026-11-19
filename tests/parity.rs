@@ -109,3 +109,54 @@ fn golden_bytes_match() {
         buf
     });
 }
+
+/// Directory input (`convert_recursive`): every `.xlsx` becomes a sibling
+/// `<name>csv`, and `--continue-on-error` walks past a file that is not a zip.
+#[test]
+fn directory_input_recurses_and_continues() {
+    if read_fixture("fixtures/f1-basic.xlsx").is_none()
+        || read_fixture("fixtures/f3-floats.xlsx").is_none()
+    {
+        eprintln!("skip directory case: fixtures missing");
+        return;
+    }
+    let root = std::env::temp_dir().join("xlsx2csv-rs-dirtest");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("sub")).expect("temp dir");
+    std::fs::copy("fixtures/f1-basic.xlsx", root.join("a.xlsx")).expect("copy a");
+    std::fs::copy("fixtures/f3-floats.xlsx", root.join("sub/b.xlsx")).expect("copy b");
+
+    let opts = ConvertOptions::default();
+    xlsx2csv_rs::port::run(&root.to_string_lossy(), &opts).expect("directory convert");
+
+    for (produced, golden) in [
+        (root.join("a.csv"), "fixtures/f1-basic.golden.csv"),
+        (root.join("sub/b.csv"), "fixtures/f3-floats.golden.csv"),
+    ] {
+        let got = std::fs::read(&produced).expect("converted file");
+        let want = std::fs::read(golden).expect("golden readable");
+        assert_eq!(
+            got.len(),
+            want.len(),
+            "{}: length differs",
+            produced.display()
+        );
+        assert!(
+            got == want,
+            "{}: bytes differ from {golden}",
+            produced.display()
+        );
+    }
+
+    // A non-zip file stops the walk unless --continue-on-error is set.
+    std::fs::write(root.join("bad.xlsx"), b"not a zip").expect("write bad");
+    let strict = xlsx2csv_rs::port::run(&root.to_string_lossy(), &opts);
+    assert!(strict.is_err(), "a bad file must fail the walk");
+    let lenient = ConvertOptions {
+        continue_on_error: true,
+        ..ConvertOptions::default()
+    };
+    xlsx2csv_rs::port::run(&root.to_string_lossy(), &lenient).expect("lenient walk");
+
+    std::fs::remove_dir_all(&root).ok();
+}

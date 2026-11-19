@@ -148,9 +148,11 @@ def f5_quirks():
     path = save(wb, "f5-quirks.xlsx")
 
     def add_cached(xml):
-        for ref, formula, value in (("A8", "1+2", "3"), ("B8", "SUM(1,2)", "3")):
-            pat = r'(<c r="%s"[^>]*><f>[^<]*</f>)<v\s*/>(</c>)' % ref
-            xml = re.sub(pat, lambda m, v=value: m.group(1) + "<v>" + v + "</v>" + m.group(2), xml)
+        # openpyxl writes `<v></v>` (older builds: `<v/>`) for a formula cell.
+        xml = re.sub(r"<v\s*/>", "<v></v>", xml)
+        for ref, value in (("A8", "3"), ("B8", "3")):
+            pat = r'(<c r="%s"[^>]*><f>[^<]*</f>)<v></v>' % ref
+            xml = re.sub(pat, lambda m, v=value: m.group(1) + "<v>" + v + "</v>", xml, count=1)
         return xml
 
     hits = patch_zip(path, "xl/worksheets/sheet1.xml", add_cached)
