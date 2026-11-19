@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the six xlsx parity fixtures for xlsx2csv-rs.
+"""Generate the seven xlsx parity fixtures for xlsx2csv-rs.
 
 Covers: f1 basic/unicode, f2 dates+percent, f3 floats, f4 multi-sheet
 (incl. hidden), f5 quirks (merged / rich text / entities / long cell /
@@ -184,6 +184,40 @@ def f6_big(rows=50000):
     return save(wb, "f6-big.xlsx")
 
 
+
+def f7_hyperlinks():
+    """Hyperlinked cells: plain text, unicode, empty, mailto, date, percent,
+    number, and a range ref patched in afterwards (A6:A7)."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "links"
+    ws["A1"] = "site"
+    ws["A1"].hyperlink = "https://example.com/a?b=1"
+    ws["B1"] = "plain"
+    ws["A2"] = "\u4e2d\u6587\u94fe\u63a5"
+    ws["A2"].hyperlink = "https://example.org/\u8def\u5f84"
+    ws["A3"].hyperlink = "https://example.net/empty"
+    ws["A4"] = "mail"
+    ws["A4"].hyperlink = "mailto:x@example.com"
+    ws["A5"] = dt.date(2023, 3, 15)
+    ws["A5"].number_format = "yyyy-mm-dd"
+    ws["A5"].hyperlink = "https://example.com/day"
+    ws["A6"] = 0.5
+    ws["A6"].number_format = "0.00%"
+    ws["A6"].hyperlink = "https://example.com/pct"
+    ws["A7"] = 42
+    ws["A8"] = "tab\tinside"
+    ws["A8"].hyperlink = "https://example.com/tab"
+    path = save(wb, "f7-hyperlinks.xlsx")
+
+    def widen(xml):
+        return xml.replace('ref="A6"', 'ref="A6:A7"', 1)
+
+    hits = patch_zip(path, "xl/worksheets/sheet1.xml", widen)
+    print("f7 range patch applied:", hits)
+    return path
+
+
 def main():
     f1_basic()
     f2_dates()
@@ -191,6 +225,7 @@ def main():
     f4_sheets()
     f5_quirks()
     f6_big()
+    f7_hyperlinks()
 
 
 if __name__ == "__main__":

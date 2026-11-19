@@ -9,9 +9,13 @@ because it is unimplemented or because no fixture covers it yet.
 | option | upstream behaviour |
 |---|---|
 | `-m`, `--merge-cells` | emit merged ranges as extra rows |
-| `--hyperlinks` | `-m` plus hyperlink attributes from sheet rels |
 | `--no-line-breaks` | strip newlines inside cell text |
 | `-E`, `-I` | exclude / include sheet name patterns (nargs) |
+
+`--hyperlinks` is implemented and covered by `fixtures/f7-hyperlinks.xlsx`
+(single-cell refs, an `A6:A7` range ref, unicode target, empty cell, mailto,
+date/percent/number cells). Its output stays byte-identical to upstream,
+including the quirk that a linked cell with no text prints the URL as value.
 
 ## Accepted but weaker than upstream
 

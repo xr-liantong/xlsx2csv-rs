@@ -6,7 +6,7 @@
 //! `max(columns_count, maxkey + 1)` columns, gaps are back-filled unless
 //! `-i`, and `--skipemptycolumns` truncates to the first row's width.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::Write;
 
 use quick_xml::events::{BytesStart, Event};
@@ -15,6 +15,7 @@ use quick_xml::Reader;
 use crate::csvw::CsvWriter;
 use crate::errors::PortError;
 use crate::fmtval::{format_cell, FmtOptions};
+use crate::ooxml::Relationships;
 use crate::styles::Styles;
 
 pub struct SheetOptions<'a> {
@@ -27,6 +28,8 @@ pub struct SheetOptions<'a> {
     pub skip_hidden_rows: bool,
     pub include_empty: bool,
     pub skip_empty_columns: bool,
+    /// `cell id -> target`, from `<hyperlinks>` plus the sheet relationships.
+    pub hyperlinks: HashMap<String, String>,
 }
 
 pub struct SheetContext<'a> {
@@ -71,6 +74,7 @@ pub fn convert_sheet<W: Write>(
     let mut col_type: Option<String> = None;
     let mut col_style: Option<String> = None;
     let mut cell_letters: i64 = 0;
+    let mut cell_id = String::new();
     let mut col_index: i64 = 0;
     let mut cell_text = String::new();
     let mut row_num: i64 = 0;
@@ -138,17 +142,23 @@ pub fn convert_sheet<W: Write>(
                         match attr(e, b"r")? {
                             Some(r) => {
                                 cell_letters = leading_letters(&r);
+                                cell_id = r;
                                 col_index = 0;
                             }
                             None => {
                                 col_index += 1;
                                 cell_letters = 0;
+                                cell_id.clear();
                             }
                         }
                         in_cell = true;
                         in_value = false;
                         if empty {
-                            store_cell(&mut st, cell_letters, col_index, String::new());
+                            let mut value = String::new();
+                            if let Some(target) = ctx.options.hyperlinks.get(&cell_id) {
+                                value = format!("<a href='{target}'></a>");
+                            }
+                            store_cell(&mut st, cell_letters, col_index, value);
                             in_cell = false;
                         }
                     }
@@ -167,7 +177,7 @@ pub fn convert_sheet<W: Write>(
                 "c" => {
                     if in_cell {
                         let opts = fmt_options(&ctx.options);
-                        let value = if cell_text.is_empty() {
+                        let mut value = if cell_text.is_empty() {
                             String::new()
                         } else {
                             format_cell(
@@ -180,6 +190,10 @@ pub fn convert_sheet<W: Write>(
                                 &opts,
                             )?
                         };
+                        // upstream wraps the formatted value, even an empty one.
+                        if let Some(target) = ctx.options.hyperlinks.get(&cell_id) {
+                            value = format!("<a href='{target}'>{value}</a>");
+                        }
                         store_cell(&mut st, cell_letters, col_index, value);
                     }
                     in_cell = false;
@@ -203,6 +217,130 @@ pub fn convert_sheet<W: Write>(
         buf.clear();
     }
     Ok(())
+}
+
+/// upstream `Sheet._range`: one cell is returned verbatim, a rectangle yields
+/// every cell in it (column-major, as upstream does).
+fn expand_range(reference: &str) -> Vec<String> {
+    let Some((start, end)) = reference.split_once(':') else {
+        return vec![reference.to_string()];
+    };
+    let Some((start_col, start_row)) = split_cell(start) else {
+        return Vec::new();
+    };
+    let Some((end_col, end_row)) = split_cell(end) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut col = start_col;
+    loop {
+        for row in start_row..=end_row {
+            out.push(format!("{}{row}", letters_of(col)));
+        }
+        if col == end_col {
+            break;
+        }
+        col += 1;
+    }
+    out
+}
+
+/// `^([A-Z]+)(\d+)$` → (letters indicator, row number).
+fn split_cell(cell: &str) -> Option<(i64, i64)> {
+    let letters_len = cell.bytes().take_while(|b| b.is_ascii_uppercase()).count();
+    if letters_len == 0 || letters_len == cell.len() {
+        return None;
+    }
+    let (letters, digits) = cell.split_at(letters_len);
+    if !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let row = digits.parse::<i64>().ok()?;
+    Some((letters_value(letters), row))
+}
+
+fn letters_value(letters: &str) -> i64 {
+    let mut value: i64 = 0;
+    for c in letters.chars() {
+        value = value * 26 + (c as i64) - 64;
+    }
+    value
+}
+
+fn letters_of(mut value: i64) -> String {
+    let mut out = Vec::new();
+    while value > 0 {
+        value -= 1;
+        out.push((b'A' + (value % 26) as u8) as char);
+        value /= 26;
+    }
+    out.iter().rev().collect()
+}
+
+/// upstream `set_include_hyperlinks`: collect `<hyperlink ref r:id>` and resolve
+/// each id through the worksheet relationships. Without a relationship part
+/// there is nothing to resolve, so the map stays empty.
+pub fn collect_hyperlinks(
+    xml: &[u8],
+    rels: &Relationships,
+) -> Result<HashMap<String, String>, PortError> {
+    let mut out = HashMap::new();
+    if rels.map.is_empty() {
+        return Ok(out);
+    }
+    let mut reader = Reader::from_reader(xml);
+    let mut buf = Vec::new();
+    let mut in_hyperlinks = false;
+    loop {
+        match reader
+            .read_event_into(&mut buf)
+            .map_err(|e| PortError::Xml(e.to_string()))?
+        {
+            Event::Eof => break,
+            Event::Start(ref e) | Event::Empty(ref e) => {
+                match local_name(e.name().as_ref()).as_str() {
+                    "hyperlinks" => in_hyperlinks = true,
+                    "hyperlink" if in_hyperlinks => {
+                        if let Some((reference, rel_id)) = hyperlink_refs(e)? {
+                            if let Some(rel) = rels.map.get(&rel_id) {
+                                if let Some(target) = rel.target.as_deref() {
+                                    for cell in expand_range(&reference) {
+                                        out.insert(cell, target.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Event::End(ref e) if local_name(e.name().as_ref()) == "hyperlinks" => {
+                in_hyperlinks = false;
+            }
+            _ => {}
+        }
+        buf.clear();
+    }
+    Ok(out)
+}
+
+/// `ref` plus any attribute whose name ends in `:id`; both are required.
+fn hyperlink_refs(e: &BytesStart<'_>) -> Result<Option<(String, String)>, PortError> {
+    let mut reference: Option<String> = None;
+    let mut rel_id: Option<String> = None;
+    for a in e.attributes() {
+        let a = a.map_err(|err| PortError::Xml(err.to_string()))?;
+        let key = a.key.as_ref().to_vec();
+        if key == b"ref" {
+            reference = Some(String::from_utf8_lossy(&a.value).to_string());
+        } else if key.ends_with(b":id") {
+            rel_id = Some(String::from_utf8_lossy(&a.value).to_string());
+        }
+    }
+    match (reference, rel_id) {
+        (Some(reference), Some(rel_id)) => Ok(Some((reference, rel_id))),
+        _ => Ok(None),
+    }
 }
 
 fn store_cell(st: &mut RowState, letters: i64, col_index: i64, value: String) {

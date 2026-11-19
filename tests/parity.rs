@@ -53,6 +53,13 @@ fn golden_bytes_match() {
         book.convert_one(1, opts, &mut buf).expect("convert");
         buf
     });
+    run_case("f7-hyperlinks", "f7-hyperlinks.golden.csv", |book, opts| {
+        let mut opts = opts.clone();
+        opts.hyperlinks = true;
+        let mut buf = Vec::new();
+        book.convert_one(1, &opts, &mut buf).expect("convert");
+        buf
+    });
     run_case("f5-quirks", "f5-quirks.golden.csv", |book, opts| {
         let mut buf = Vec::new();
         book.convert_one(1, opts, &mut buf).expect("convert");

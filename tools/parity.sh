@@ -58,6 +58,8 @@ check f4-sheets f4-sheets.s2.golden.csv -s 2
 check f4-sheets f4-sheets.n.golden.csv -n 'S2 名称'
 check f5-quirks f5-quirks.golden.csv
 check f6-big f6-big.golden.csv
+check f7-hyperlinks f7-hyperlinks.golden.csv --hyperlinks
+check f7-hyperlinks f7-hyperlinks.plain.golden.csv
 
 echo "parity: $pass passed, $fail failed, $skip skipped"
 [ "$fail" -eq 0 ] || exit 1

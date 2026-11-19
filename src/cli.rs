@@ -117,10 +117,10 @@ pub fn parse(argv: &[String]) -> Outcome {
             "--ignore-percentage" => opts.ignore_percentage = true,
             "--exclude_hidden_sheets" => opts.exclude_hidden_sheets = true,
             "--include-hidden-rows" => include_hidden_rows = true,
+            "--hyperlinks" => opts.hyperlinks = true,
             "--continue-on-error" => {}
             "-m"
             | "--merge-cells"
-            | "--hyperlinks"
             | "--no-line-breaks"
             | "-E"
             | "--exclude_sheet_pattern"
