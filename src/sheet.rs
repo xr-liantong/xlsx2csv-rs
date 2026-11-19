@@ -34,6 +34,8 @@ pub struct SheetOptions<'a> {
     pub merged: HashMap<String, String>,
     /// `--no-line-breaks`: `\r`, `\n` and `\t` become spaces.
     pub no_line_breaks: bool,
+    /// `-e`: `<v>` cell text gets literal `\r` / `\n` / `\t` escapes.
+    pub escape_strings: bool,
 }
 
 pub struct SheetContext<'a> {
@@ -75,6 +77,8 @@ pub fn convert_sheet<W: Write>(
     let mut in_row = false;
     let mut in_cell = false;
     let mut in_value = false;
+    // `-e` rewrites entities only inside `<v>`; inline `<t>` keeps its bytes.
+    let mut in_v = false;
     let mut col_type: Option<String> = None;
     let mut col_style: Option<String> = None;
     let mut cell_letters: i64 = 0;
@@ -158,6 +162,7 @@ pub fn convert_sheet<W: Write>(
                         }
                         in_cell = true;
                         in_value = false;
+                        in_v = false;
                         if empty {
                             let mut value = String::new();
                             if let Some(target) = ctx.options.hyperlinks.get(&cell_id) {
@@ -174,7 +179,14 @@ pub fn convert_sheet<W: Write>(
                             in_cell = false;
                         }
                     }
-                    "v" | "t" if in_cell => in_value = !empty,
+                    "v" if in_cell => {
+                        in_value = !empty;
+                        in_v = !empty;
+                    }
+                    "t" if in_cell => {
+                        in_value = !empty;
+                        in_v = false;
+                    }
                     _ => {}
                 }
             }
@@ -215,19 +227,25 @@ pub fn convert_sheet<W: Write>(
                     }
                     in_cell = false;
                     in_value = false;
+                    in_v = false;
                     cell_text.clear();
                 }
-                "v" | "t" => in_value = false,
+                "v" => {
+                    in_value = false;
+                    in_v = false;
+                }
+                "t" => in_value = false,
                 _ => {}
             },
             Event::Text(ref e) if in_cell && in_value => {
                 let text = e
                     .unescape()
                     .map_err(|err| PortError::Xml(err.to_string()))?;
-                cell_text.push_str(&text);
+                cell_text.push_str(&escape_v_text(&ctx.options, in_v, &text));
             }
             Event::CData(ref e) if in_cell && in_value => {
-                cell_text.push_str(&String::from_utf8_lossy(e.as_ref()));
+                let text = String::from_utf8_lossy(e.as_ref());
+                cell_text.push_str(&escape_v_text(&ctx.options, in_v, &text));
             }
             _ => {}
         }
@@ -258,6 +276,17 @@ fn apply_merge(
         }),
         None => Ok(value),
     }
+}
+
+/// upstream `_convert`'s regex on `<v>` bodies (`-e`): the entities `&#13;`,
+/// `&#10;` and `&#9;` become the two-character escapes `\\r`, `\\n`, `\\t`.
+fn escape_v_text(options: &SheetOptions, in_v: bool, text: &str) -> String {
+    if !options.escape_strings || !in_v {
+        return text.to_string();
+    }
+    text.replace('\r', "\\r")
+        .replace('\n', "\\n")
+        .replace('\t', "\\t")
 }
 
 /// upstream `handleEndElement`: `--no-line-breaks` maps line breaks to spaces.

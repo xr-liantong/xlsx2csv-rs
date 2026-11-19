@@ -244,6 +244,69 @@ def f8_merged():
     return path
 
 
+def f9_shared_strings():
+    """`-e` fixture: real sharedStrings table. openpyxl 3.1.5 emits inline
+    strings, so the cells are rewritten to `t="s"` and a sharedStrings part is
+    added -- otherwise `-e` has nothing to escape."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "sst"
+    ws["A1"] = "tab\tinside"
+    ws["A2"] = "line\ninside"
+    ws["A3"] = "carriage\rreturn"
+    ws["A4"] = "plain"
+    ws["A5"] = "中文\temoji \U0001f600"
+    ws["B1"] = 1
+    path = save(wb, "f9-shared.xlsx")
+
+    cell_re = re.compile(
+        r'<c r="([A-Z]+\d+)"([^>]*?)t="inlineStr"><is><t[^>]*>(.*?)</t></is></c>'
+    )
+    ctype_override = (
+        '<Override PartName="/xl/sharedStrings.xml" ContentType='
+        '"application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>'
+    )
+    rel = (
+        '<Relationship Id="rIdSst" Type="http://schemas.openxmlformats.org/'
+        'officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>'
+    )
+
+    with zipfile.ZipFile(path) as zin:
+        items = [(i, zin.read(i.filename)) for i in zin.infolist()]
+    strings = []
+    out = []
+    for item, data in items:
+        if item.filename == "xl/worksheets/sheet1.xml":
+            text = data.decode("utf-8")
+
+            def repl(m):
+                strings.append(m.group(3))
+                return '<c r="%s"%s t="s"><v>%d</v></c>' % (
+                    m.group(1), m.group(2).rstrip(" "), len(strings) - 1
+                )
+
+            data = cell_re.sub(repl, text).encode("utf-8")
+        elif item.filename == "[Content_Types].xml":
+            data = data.decode("utf-8").replace("</Types>", ctype_override + "</Types>", 1).encode("utf-8")
+        elif item.filename == "xl/_rels/workbook.xml.rels":
+            data = data.decode("utf-8").replace("</Relationships>", rel + "</Relationships>", 1).encode("utf-8")
+        out.append((item, data))
+
+    sst = '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="%d" uniqueCount="%d">' % (len(strings), len(strings))
+    for t in strings:
+        sst += '<si><t xml:space="preserve">%s</t></si>' % t
+    sst += "</sst>"
+
+    tmp = path + ".tmp"
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item, data in out:
+            zout.writestr(item, data)
+        zout.writestr("xl/sharedStrings.xml", sst.encode("utf-8"))
+    os.replace(tmp, path)
+    print("f9 shared strings:", len(strings))
+    return path
+
+
 def main():
     f1_basic()
     f2_dates()
@@ -252,6 +315,7 @@ def main():
     f5_quirks()
     f6_big()
     f7_hyperlinks()
+    f9_shared_strings()
 
 
 if __name__ == "__main__":

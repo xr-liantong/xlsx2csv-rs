@@ -10,7 +10,7 @@ acceptance target is what upstream 0.8.6 actually prints on the fixtures.
 
 ## Status: v0.1.0
 
-Parity — 19/19 golden cases match the upstream output byte for byte
+Parity — 21/21 golden cases match the upstream output byte for byte
 (`cmp`, exit 0):
 
 | fixture | arguments | bytes |
@@ -33,6 +33,9 @@ Parity — 19/19 golden cases match the upstream output byte for byte
 | f8-merged | `-m` | 26 |
 | f8-merged | (none) | 17 |
 | f5-quirks | `--no-line-breaks` | 2093 |
+| f1-basic | `--no-line-breaks` | 414 |
+| f9-shared | (none) | 73 |
+| f9-shared | `-e` | 74 |
 | f1-basic | `--no-line-breaks` | 414 |
 
 Gate results (`cargo fmt --check`, `cargo clippy --release --all-targets --
@@ -73,7 +76,8 @@ xlsx2csv-rs [options] xlsxfile [outfile]
 ```
 
 Supported today: `-a/--all`, `-d/--delimiter`, `-s/--sheet`,
-`-n/--sheetname`, `-i/--ignoreempty`, `-e/--escape`,
+`-n/--sheetname`, `-i/--ignoreempty`, `-e/--escape`, `-E`/`-I` sheet-name
+patterns, `-m/--merge-cells`, `--hyperlinks`, `--no-line-breaks`,
 `--skipemptycolumns`, `-f/--dateformat`, `-t/--timeformat`,
 `--floatformat`, `--sci-float`, `--ignore-percentage`, `--ignore-formats`,
 `--exclude_hidden_sheets`, `--include-hidden-rows`, `-l/--lineterminator`,

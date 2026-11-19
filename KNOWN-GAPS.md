@@ -6,8 +6,7 @@ because it is unimplemented or because no fixture covers it yet.
 
 ## Not implemented
 
-Nothing: every upstream option is parsed. `-c` and `-e` behave differently
-(see below).
+Nothing: every upstream option is implemented; `-c` is weaker (see below).
 
 
 `--hyperlinks` is implemented and covered by `fixtures/f7-hyperlinks.xlsx`
@@ -32,13 +31,27 @@ upstream, a range whose followers appear *before* the corner exits 1 with
 `merged cell B2 precedes its corner A2` instead of a Python `KeyError`
 traceback; a range with a single-cell ref is ignored, as upstream does.
 
+A CR (`\r`) inside a field is always quoted, like CPython's `_csv`, even when
+the terminator does not contain it; `fixtures/f9-shared.xlsx` covers that.
+
 ## Accepted but weaker than upstream
 
 | option | state |
 |---|---|
 | `-c`, `--outputencoding` | parsed, output is always UTF-8 |
-| `-e`, `--escape` | parsed, `\r\n\t` escaping is not applied |
 | directory as input | upstream converts every file recursively; we exit 1 |
+
+## `-e` / `--escape`
+
+Two paths, as upstream has: the shared-string table is escaped once before any
+sheet is written, and `<v>` bodies get `\\r` / `\\n` / `\\t` for embedded
+CR/LF/TAB. Inline strings (`t="inlineStr"`, what openpyxl 3.1.5 writes) are not
+escaped, which is also upstream's behaviour -- `fixtures/f9-shared.xlsx` carries
+a real sharedStrings part so the escaping path is actually exercised.
+
+One deliberate difference: upstream rewrites only the XML entities `&#13;`,
+`&#10;`, `&#9;` inside `<v>`; we escape the decoded characters, so a raw CR in
+a `<v>` body is escaped too. A `<v>` body only holds numbers in practice.
 
 ## Known divergences
 

@@ -211,6 +211,18 @@ impl Xlsx2csv {
         } else {
             std::collections::HashMap::new()
         };
+        // `-e`: upstream escapes the shared-string table once, before any sheet
+        // is written, and rewrites `<v>` entities as literal \\r \\n \\t.
+        let escaped_strings: Option<Vec<String>> = if opts.escape_strings {
+            Some(
+                self.shared_strings
+                    .iter()
+                    .map(|s| escape_line_breaks(s))
+                    .collect(),
+            )
+        } else {
+            None
+        };
         let sheet_opts = SheetOptions {
             dateformat: opts.dateformat.as_deref(),
             timeformat: &opts.timeformat,
@@ -224,10 +236,11 @@ impl Xlsx2csv {
             hyperlinks,
             merged,
             no_line_breaks: opts.no_line_breaks,
+            escape_strings: opts.escape_strings,
         };
         let ctx = SheetContext {
             styles: &self.styles,
-            shared_strings: &self.shared_strings,
+            shared_strings: escaped_strings.as_deref().unwrap_or(&self.shared_strings),
             date1904: self.workbook.date1904,
             options: sheet_opts,
         };
@@ -282,6 +295,14 @@ impl Xlsx2csv {
     }
 }
 
+/// upstream `SharedStrings.escape_strings()`.
+fn escape_line_breaks(value: &str) -> String {
+    value
+        .replace('\r', "\\r")
+        .replace('\n', "\\n")
+        .replace('\t', "\\t")
+}
+
 fn open_out_file(path: &str) -> Result<BufWriter<File>, PortError> {
     Ok(BufWriter::new(File::create(path)?))
 }
@@ -319,9 +340,6 @@ pub fn run(input: &str, opts: &ConvertOptions) -> Result<(), PortError> {
     }
     if input != "-" && !Path::new(input).exists() {
         return Err(PortError::InputNotFound);
-    }
-    if opts.escape_strings {
-        return Err(PortError::Unsupported("`-e/--escape`"));
     }
 
     let mut book = Xlsx2csv::open(input)?;

@@ -100,6 +100,8 @@ check f1-basic f1-basic.nlb.golden.csv --no-line-breaks
 check_file_first f4-sheets f4-sheets.i-s2.golden.csv -a -I '^S2'
 check_file_first f4-sheets f4-sheets.i-two.golden.csv -a -I S1 S2
 check_file_first f4-sheets f4-sheets.e-s.golden.csv -a -E '^S'
+check f9-shared f9-shared.golden.csv
+check f9-shared f9-shared.e.golden.csv -e
 
 echo "parity: $pass passed, $fail failed, $skip skipped"
 [ "$fail" -eq 0 ] || exit 1
