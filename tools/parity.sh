@@ -114,6 +114,34 @@ check_file_first f3-floats f3-floats.e.golden.csv --floatformat '%e'
 check_file_first f3-floats f3-floats.g.golden.csv --floatformat '%g'
 check_file_first f3-floats f3-floats.f0.golden.csv --floatformat '%.0f'
 
+# `-c/--outputencoding` only affects file output (upstream opens the file with
+# `encoding=` and leaves sys.stdout alone), so these cases compare files.
+check_enc() {
+    fixture=$1
+    golden=$2
+    enc=$3
+    xlsx="$FIX/$fixture.xlsx"
+    want="$FIX/$golden"
+    if [ ! -f "$xlsx" ] || [ ! -f "$want" ]; then
+        echo "SKIP $fixture -c $enc (missing fixture or golden)"
+        skip=$((skip + 1))
+        return
+    fi
+    mkdir -p "$tmp"
+    if "$BIN" -c "$enc" "$xlsx" "$tmp/enc.out" >/dev/null 2>"$tmp/enc.err"; then :; fi
+    if cmp -s "$tmp/enc.out" "$want"; then
+        echo "PASS $fixture -c $enc"
+        pass=$((pass + 1))
+    else
+        echo "FAIL $fixture -c $enc -> $golden"
+        fail=$((fail + 1))
+    fi
+}
+
+check_enc f3-floats f3-floats.utf16le.golden.csv utf-16-le
+check_enc f3-floats f3-floats.cp1252.golden.csv cp1252
+check_enc f3-floats f3-floats.utf16.golden.csv utf-16
+
 echo "parity: $pass passed, $fail failed, $skip skipped"
 [ "$fail" -eq 0 ] || exit 1
 exit 0

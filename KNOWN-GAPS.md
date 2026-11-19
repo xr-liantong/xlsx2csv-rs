@@ -112,3 +112,17 @@ flag combinations it samples. Two cases are deliberately excluded from full
 comparison: upstream tracebacks (exit code and stdout only) and workbooks it
 cannot build (skipped). The sampled flags do not include `-c`, `-E`/`-I`,
 `--ignore-formats` or directory input; those are covered by fixtures instead.
+
+## Output encoding coverage
+
+`-c/--outputencoding` covers `utf-8`, `ascii`, `latin-1`, `cp1252`, `utf-16`,
+`utf-16-le` and `utf-16-be` — the codecs that need no dependency. Every other
+CPython codec name (`gbk`, `big5`, `shift_jis`, `koi8-r`, ...) is rejected with
+`unknown encoding: <name>` instead of being accepted and silently written as
+UTF-8. Upstream would accept them.
+
+Two smaller differences in the failure path: upstream raises an uncaught
+`UnicodeEncodeError` (traceback on stderr) and stops mid-file; this port writes
+the same partial bytes, exits 1, and prints one line. Upstream reports a range
+of positions (`in position 2-3`) when a row has several unencodable characters;
+this port reports the first one.

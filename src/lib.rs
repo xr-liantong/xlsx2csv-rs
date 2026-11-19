@@ -10,6 +10,7 @@
 pub mod cli;
 pub mod csvw;
 pub mod dates;
+pub mod encoding;
 pub mod errors;
 pub mod fmtval;
 pub mod ooxml;

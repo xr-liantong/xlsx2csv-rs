@@ -132,6 +132,22 @@ src/dates.rs    Excel serial -> date, format code translation
 src/csvw.rs     csv.writer-compatible quoting
 ```
 
+## Output encoding
+
+`-c/--outputencoding` behaves like upstream: the codec is applied to the
+output **file** only, because upstream passes `encoding=` to `open()` and
+leaves `sys.stdout` untouched — so `-c latin-1` to stdout is a no-op there and
+here. Supported codecs: `utf-8` (default), `ascii`, `latin-1`, `cp1252`,
+`utf-16`, `utf-16-le`, `utf-16-be`. A character the codec cannot represent
+fails with exit 1 and CPython's message shape:
+
+```
+'latin-1' codec can't encode character '\u4e2d' in position 2: ordinal not in range(256)
+```
+
+Anything else (gbk, shift_jis, ...) is rejected with `unknown encoding: <name>`
+rather than silently writing UTF-8 under that name; see KNOWN-GAPS.md.
+
 ## Differential fuzz
 
 Hand-picked fixtures only cover what we thought of. `tools/fuzz_parity.py`

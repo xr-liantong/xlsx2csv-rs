@@ -6,6 +6,7 @@
 //! box, where the fixtures exist.
 
 use xlsx2csv_rs::csvw::Quoting;
+use xlsx2csv_rs::encoding::{EncodedWriter, Encoding};
 use xlsx2csv_rs::port::{ConvertOptions, Xlsx2csv};
 
 fn read_fixture(path: &str) -> Option<Vec<u8>> {
@@ -127,6 +128,50 @@ fn nonnumeric_quoting_matches_upstream() {
             book.convert_one(1, &opts, &mut buf).expect("convert");
             buf
         },
+    );
+}
+
+/// `-c/--outputencoding` writes the file through the named codec. Upstream
+/// only applies it to file output, so the goldens are whole files.
+#[test]
+fn output_encoding_matches_goldens() {
+    for (golden, enc) in [
+        ("f3-floats.utf16le.golden.csv", "utf-16-le"),
+        ("f3-floats.cp1252.golden.csv", "cp1252"),
+        ("f3-floats.utf16.golden.csv", "utf-16"),
+    ] {
+        let Some(_) = read_fixture("fixtures/f3-floats.xlsx") else {
+            eprintln!("skip {enc}: fixture missing");
+            continue;
+        };
+        let want = std::fs::read(format!("fixtures/{golden}")).expect("golden readable");
+        let mut sink = EncodedWriter::new(Vec::new(), Encoding::parse(enc).expect("codec"));
+        let mut book = Xlsx2csv::open("fixtures/f3-floats.xlsx").expect("open fixture");
+        let opts = ConvertOptions::default();
+        book.convert_one(1, &opts, &mut sink).expect("convert");
+        assert_eq!(sink.into_inner(), want, "-c {enc}");
+    }
+}
+
+/// A character the codec cannot represent fails like CPython, with the codec
+/// name and the character in the message.
+#[test]
+fn output_encoding_reports_unencodable() {
+    let Some(_) = read_fixture("fixtures/f1-basic.xlsx") else {
+        eprintln!("skip encoding error case: fixture missing");
+        return;
+    };
+    let mut sink = EncodedWriter::new(Vec::new(), Encoding::parse("latin-1").expect("codec"));
+    let mut book = Xlsx2csv::open("fixtures/f1-basic.xlsx").expect("open fixture");
+    let opts = ConvertOptions::default();
+    let err = book
+        .convert_one(1, &opts, &mut sink)
+        .err()
+        .expect("latin-1 cannot encode CJK");
+    let text = err.to_string();
+    assert!(
+        text.starts_with("'latin-1' codec can't encode character '\\u"),
+        "unexpected message: {text}"
     );
 }
 

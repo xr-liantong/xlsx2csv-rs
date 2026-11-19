@@ -10,6 +10,7 @@ use std::io::{self, BufWriter, Write};
 use std::path::Path;
 
 use crate::csvw::{CsvWriter, Quoting};
+use crate::encoding::{EncodedWriter, Encoding};
 use crate::errors::PortError;
 use crate::ooxml::{ContentTypes, Package, Relationships, Workbook};
 use crate::pattern::{any_matches, none_matches};
@@ -47,6 +48,9 @@ pub struct ConvertOptions {
     pub no_line_breaks: bool,
     /// `--continue-on-error`: directory mode keeps going after a bad file.
     pub continue_on_error: bool,
+    /// `-c/--outputencoding`: only applies to file output, like upstream,
+    /// which opens the file with `encoding=` and leaves `sys.stdout` alone.
+    pub output_encoding: Option<String>,
     pub sheet_id: u32,
     pub sheet_name: Option<String>,
     pub out_path: Option<String>,
@@ -76,6 +80,7 @@ impl Default for ConvertOptions {
             merge_cells: false,
             no_line_breaks: false,
             continue_on_error: false,
+            output_encoding: None,
             sheet_id: 1,
             sheet_name: None,
             out_path: None,
@@ -306,8 +311,12 @@ fn escape_line_breaks(value: &str) -> String {
         .replace('\t', "\\t")
 }
 
-fn open_out_file(path: &str) -> Result<BufWriter<File>, PortError> {
-    Ok(BufWriter::new(File::create(path)?))
+fn open_out_file(path: &str, encoding: Option<&str>) -> Result<Box<dyn Write>, PortError> {
+    let file = BufWriter::new(File::create(path)?);
+    match encoding {
+        None => Ok(Box::new(file)),
+        Some(name) => Ok(Box::new(EncodedWriter::new(file, Encoding::parse(name)?))),
+    }
 }
 
 /// Bench helper: convert `input` into a throwaway sink.
@@ -406,7 +415,11 @@ fn run_one(input: &str, opts: &ConvertOptions) -> Result<(), PortError> {
     if sheet_id > 0 {
         match opts.out_path.as_deref() {
             Some(path) => {
-                book.convert_one(sheet_id, opts, open_out_file(path)?)?;
+                book.convert_one(
+                    sheet_id,
+                    opts,
+                    open_out_file(path, opts.output_encoding.as_deref())?,
+                )?;
             }
             None => {
                 book.convert_one(sheet_id, opts, io::stdout())?;
@@ -437,7 +450,11 @@ fn run_one(input: &str, opts: &ConvertOptions) -> Result<(), PortError> {
                     continue;
                 }
                 let target = p.join(format!("{name}.csv"));
-                book.convert_one(index, opts, open_out_file(&target.to_string_lossy())?)?;
+                book.convert_one(
+                    index,
+                    opts,
+                    open_out_file(&target.to_string_lossy(), opts.output_encoding.as_deref())?,
+                )?;
             }
             Ok(())
         }

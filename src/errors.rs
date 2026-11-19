@@ -33,6 +33,9 @@ pub enum PortError {
     Pattern(String),
     /// a merged follower that precedes its top-left cell (upstream: KeyError).
     Merge(String),
+    /// `-c/--outputencoding`: unknown codec or a character the codec cannot
+    /// represent (upstream raises LookupError / UnicodeEncodeError).
+    Encoding(String),
 }
 
 impl PortError {
@@ -66,6 +69,7 @@ impl fmt::Display for PortError {
             PortError::Unsupported(m) => write!(f, "unsupported: {m}"),
             PortError::Pattern(m) => write!(f, "{m}"),
             PortError::Merge(m) => write!(f, "{m}"),
+            PortError::Encoding(m) => write!(f, "{m}"),
         }
     }
 }

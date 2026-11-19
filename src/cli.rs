@@ -193,9 +193,6 @@ pub fn parse(argv: &[String]) -> Outcome {
             positionals[2..].join(" ")
         ));
     }
-    if outputencoding != "utf-8" {
-        return Outcome::Fatal("error: only utf-8 output encoding is supported".to_string());
-    }
     match lineterminator.as_str() {
         "\n" => {}
         "\\n" => lineterminator = "\n".to_string(),
@@ -226,6 +223,11 @@ pub fn parse(argv: &[String]) -> Outcome {
     opts.quoting = quoting;
     opts.sheet_delimiter = sheetdelimiter;
     opts.skip_hidden_rows = !include_hidden_rows;
+    // Upstream only passes the codec to `open(...)` for the output file;
+    // `sys.stdout` keeps its own encoding, so the flag is a no-op there.
+    if outputencoding != "utf-8" {
+        opts.output_encoding = Some(outputencoding);
+    }
     Outcome::Run(Box::new(Args {
         input: positionals[0].clone(),
         opts,
