@@ -218,6 +218,32 @@ def f7_hyperlinks():
     return path
 
 
+
+def f8_merged():
+    """`-m` fixture: a merge whose follower cells really exist in the sheet
+    XML (openpyxl omits them, so they are patched back in), both horizontal
+    and vertical."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "merged"
+    ws["A1"] = "wide"
+    ws.merge_cells("A1:C1")
+    ws["A2"] = 7
+    ws.merge_cells("A2:B2")
+    ws["D1"] = "tail"
+    path = save(wb, "f8-merged.xlsx")
+
+    def add_followers(xml):
+        xml = xml.replace('<c r="D1"', '<c r="B1"/><c r="C1"/><c r="D1"', 1)
+        return xml.replace(
+            '<c r="A2" t="n"><v>7</v></c>', '<c r="A2" t="n"><v>7</v></c><c r="B2"/>', 1
+        )
+
+    hits = patch_zip(path, "xl/worksheets/sheet1.xml", add_followers)
+    print("f8 follower patch applied:", hits)
+    return path
+
+
 def main():
     f1_basic()
     f2_dates()

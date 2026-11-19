@@ -10,7 +10,7 @@ acceptance target is what upstream 0.8.6 actually prints on the fixtures.
 
 ## Status: v0.1.0
 
-Parity — 15/15 golden cases match the upstream output byte for byte
+Parity — 17/17 golden cases match the upstream output byte for byte
 (`cmp`, exit 0):
 
 | fixture | arguments | bytes |
@@ -30,6 +30,8 @@ Parity — 15/15 golden cases match the upstream output byte for byte
 | f4-sheets | `-a -I '^S2'` | 27 |
 | f4-sheets | `-a -I S1 S2` | 51 |
 | f4-sheets | `-a -E '^S'` | 35 |
+| f8-merged | `-m` | 26 |
+| f8-merged | (none) | 17 |
 
 Gate results (`cargo fmt --check`, `cargo clippy --release --all-targets --
 -D warnings`, `cargo test --release`): all exit 0.

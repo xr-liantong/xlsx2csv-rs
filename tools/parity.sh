@@ -93,6 +93,8 @@ check f5-quirks f5-quirks.golden.csv
 check f6-big f6-big.golden.csv
 check f7-hyperlinks f7-hyperlinks.golden.csv --hyperlinks
 check f7-hyperlinks f7-hyperlinks.plain.golden.csv
+check f8-merged f8-merged.golden.csv -m
+check f8-merged f8-merged.plain.golden.csv
 check_file_first f4-sheets f4-sheets.i-s2.golden.csv -a -I '^S2'
 check_file_first f4-sheets f4-sheets.i-two.golden.csv -a -I S1 S2
 check_file_first f4-sheets f4-sheets.e-s.golden.csv -a -E '^S'

@@ -30,6 +30,8 @@ pub struct SheetOptions<'a> {
     pub skip_empty_columns: bool,
     /// `cell id -> target`, from `<hyperlinks>` plus the sheet relationships.
     pub hyperlinks: HashMap<String, String>,
+    /// `cell id -> top-left cell id`, from `<mergeCells>` (`-m`).
+    pub merged: HashMap<String, String>,
 }
 
 pub struct SheetContext<'a> {
@@ -75,6 +77,7 @@ pub fn convert_sheet<W: Write>(
     let mut col_style: Option<String> = None;
     let mut cell_letters: i64 = 0;
     let mut cell_id = String::new();
+    let mut merged_values: HashMap<String, String> = HashMap::new();
     let mut col_index: i64 = 0;
     let mut cell_text = String::new();
     let mut row_num: i64 = 0;
@@ -158,6 +161,12 @@ pub fn convert_sheet<W: Write>(
                             if let Some(target) = ctx.options.hyperlinks.get(&cell_id) {
                                 value = format!("<a href='{target}'></a>");
                             }
+                            value = apply_merge(
+                                &ctx.options.merged,
+                                &mut merged_values,
+                                &cell_id,
+                                value,
+                            )?;
                             store_cell(&mut st, cell_letters, col_index, value);
                             in_cell = false;
                         }
@@ -194,6 +203,10 @@ pub fn convert_sheet<W: Write>(
                         if let Some(target) = ctx.options.hyperlinks.get(&cell_id) {
                             value = format!("<a href='{target}'>{value}</a>");
                         }
+                        // upstream substitutes merged followers with the
+                        // top-left cell's already-wrapped value.
+                        value =
+                            apply_merge(&ctx.options.merged, &mut merged_values, &cell_id, value)?;
                         store_cell(&mut st, cell_letters, col_index, value);
                     }
                     in_cell = false;
@@ -217,6 +230,75 @@ pub fn convert_sheet<W: Write>(
         buf.clear();
     }
     Ok(())
+}
+
+/// `-m`: a merged follower takes the top-left cell's value, which was stored
+/// when that cell was emitted. A range whose top-left never appears leaves an
+/// empty string (upstream raises KeyError here; see KNOWN-GAPS.md).
+fn apply_merge(
+    merged: &HashMap<String, String>,
+    values: &mut HashMap<String, String>,
+    cell_id: &str,
+    value: String,
+) -> Result<String, PortError> {
+    match merged.get(cell_id) {
+        Some(source) if source == cell_id => {
+            values.insert(cell_id.to_string(), value.clone());
+            Ok(value)
+        }
+        Some(source) => values.get(source).cloned().ok_or_else(|| {
+            // upstream raises KeyError here and exits 1; we say it plainly.
+            PortError::Merge(format!(
+                "merged cell {cell_id} precedes its corner {source}"
+            ))
+        }),
+        None => Ok(value),
+    }
+}
+
+/// upstream `set_merge_cells`: read `<mergeCells>` straight out of the sheet
+/// bytes, expand every `ref="A1:B2"`, and remember the top-left cell id.
+pub fn collect_merges(xml: &[u8]) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    let Some(start) = find_bytes(xml, b"<mergeCells") else {
+        return out;
+    };
+    let Some(end) = find_bytes(&xml[start..], b"</mergeCells>") else {
+        return out;
+    };
+    let section = &xml[start..start + end];
+    let mut i = 0;
+    while let Some(pos) = find_bytes(&section[i..], b"<mergeCell ") {
+        let tag_start = i + pos;
+        let Some(close) = find_bytes(&section[tag_start..], b">") else {
+            break;
+        };
+        if let Some(reference) = attr_value(&section[tag_start..tag_start + close], b"ref") {
+            if let Some((first, _)) = reference.split_once(':') {
+                let source = first.to_string();
+                for cell in expand_range(&reference) {
+                    out.insert(cell, source.clone());
+                }
+            }
+        }
+        i = tag_start + close + 1;
+    }
+    out
+}
+
+fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
+fn attr_value(tag: &[u8], name: &[u8]) -> Option<String> {
+    let key = [b" ", name, b"="].concat();
+    let at = find_bytes(tag, &key)? + key.len();
+    let quote = *tag.get(at)?;
+    let rest = &tag[at + 1..];
+    let end = rest.iter().position(|b| *b == quote)?;
+    Some(String::from_utf8_lossy(&rest[..end]).into_owned())
 }
 
 /// upstream `Sheet._range`: one cell is returned verbatim, a rectangle yields
@@ -463,4 +545,51 @@ fn leading_letters(cell: &str) -> i64 {
         }
     }
     n
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+
+    #[test]
+    fn merges_expand_to_every_covered_cell() {
+        let xml = br#"<worksheet><mergeCells count="2"><mergeCell ref="A1:C1"/><mergeCell ref="B3:B4"/></mergeCells></worksheet>"#;
+        let merged = collect_merges(xml);
+        assert_eq!(merged.get("A1").map(String::as_str), Some("A1"));
+        assert_eq!(merged.get("C1").map(String::as_str), Some("A1"));
+        assert_eq!(merged.get("B4").map(String::as_str), Some("B3"));
+        assert_eq!(merged.len(), 5);
+    }
+
+    #[test]
+    fn merges_ignore_single_cell_refs_like_upstream() {
+        let xml = br#"<mergeCells><mergeCell ref="A1"/></mergeCells>"#;
+        assert!(collect_merges(xml).is_empty());
+    }
+
+    #[test]
+    fn followers_take_the_corner_value_in_column_order() {
+        let mut merged = HashMap::new();
+        merged.insert("A1".to_string(), "A1".to_string());
+        merged.insert("B1".to_string(), "A1".to_string());
+        let mut values = HashMap::new();
+        assert_eq!(
+            apply_merge(&merged, &mut values, "A1", "wide".into()).unwrap(),
+            "wide"
+        );
+        assert_eq!(
+            apply_merge(&merged, &mut values, "B1", "".into()).unwrap(),
+            "wide"
+        );
+        assert!(apply_merge(&merged, &mut values, "B1", "".into()).is_ok());
+    }
+
+    #[test]
+    fn follower_before_corner_is_an_error() {
+        let mut merged = HashMap::new();
+        merged.insert("B2".to_string(), "A2".to_string());
+        let mut values = HashMap::new();
+        assert!(apply_merge(&merged, &mut values, "B2", String::new()).is_err());
+    }
 }

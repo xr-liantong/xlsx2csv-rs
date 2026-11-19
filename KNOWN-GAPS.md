@@ -8,7 +8,6 @@ because it is unimplemented or because no fixture covers it yet.
 
 | option | upstream behaviour |
 |---|---|
-| `-m`, `--merge-cells` | emit merged ranges as extra rows |
 | `--no-line-breaks` | strip newlines inside cell text |
 
 `--hyperlinks` is implemented and covered by `fixtures/f7-hyperlinks.xlsx`
@@ -22,6 +21,12 @@ alternation or `{m,n}` are rejected with exit 1 and a message naming the
 pattern, instead of silently selecting different sheets. `-E`/`-I` only filter
 the all-sheets mode (`-a`), exactly like upstream, and take their values before
 the input path because they are `nargs='+'`.
+
+`-m` / `--merge-cells` is implemented: every cell of a `ref="A1:B2"` range takes
+the top-left cell's already-wrapped value, exactly like upstream. Unlike
+upstream, a range whose followers appear *before* the corner exits 1 with
+`merged cell B2 precedes its corner A2` instead of a Python `KeyError`
+traceback; a range with a single-cell ref is ignored, as upstream does.
 
 ## Accepted but weaker than upstream
 

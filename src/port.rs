@@ -13,7 +13,7 @@ use crate::csvw::{CsvWriter, Quoting};
 use crate::errors::PortError;
 use crate::ooxml::{ContentTypes, Package, Relationships, Workbook};
 use crate::pattern::{any_matches, none_matches};
-use crate::sheet::{collect_hyperlinks, convert_sheet, SheetContext, SheetOptions};
+use crate::sheet::{collect_hyperlinks, collect_merges, convert_sheet, SheetContext, SheetOptions};
 use crate::sst::SharedStrings;
 use crate::styles::Styles;
 
@@ -41,6 +41,8 @@ pub struct ConvertOptions {
     /// `-E`: drop sheets whose name matches one of these.
     pub exclude_patterns: Vec<String>,
     pub hyperlinks: bool,
+    /// `-m`: fill merged followers with the top-left cell's value.
+    pub merge_cells: bool,
     pub sheet_id: u32,
     pub sheet_name: Option<String>,
     pub out_path: Option<String>,
@@ -67,6 +69,7 @@ impl Default for ConvertOptions {
             include_patterns: vec!["^.*$".to_string()],
             exclude_patterns: vec![],
             hyperlinks: false,
+            merge_cells: false,
             sheet_id: 1,
             sheet_name: None,
             out_path: None,
@@ -200,6 +203,11 @@ impl Xlsx2csv {
                 hyperlinks = collect_hyperlinks(&xml, &rels)?;
             }
         }
+        let merged = if opts.merge_cells {
+            collect_merges(&xml)
+        } else {
+            std::collections::HashMap::new()
+        };
         let sheet_opts = SheetOptions {
             dateformat: opts.dateformat.as_deref(),
             timeformat: &opts.timeformat,
@@ -211,6 +219,7 @@ impl Xlsx2csv {
             include_empty: opts.include_empty,
             skip_empty_columns: opts.skip_empty_columns,
             hyperlinks,
+            merged,
         };
         let ctx = SheetContext {
             styles: &self.styles,

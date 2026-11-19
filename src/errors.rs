@@ -31,6 +31,8 @@ pub enum PortError {
     Unsupported(&'static str),
     /// a `-I` / `-E` pattern outside the supported `re` subset.
     Pattern(String),
+    /// a merged follower that precedes its top-left cell (upstream: KeyError).
+    Merge(String),
 }
 
 impl PortError {
@@ -63,6 +65,7 @@ impl fmt::Display for PortError {
             PortError::InputNotFound => write!(f, "Input file not found!"),
             PortError::Unsupported(m) => write!(f, "unsupported: {m}"),
             PortError::Pattern(m) => write!(f, "{m}"),
+            PortError::Merge(m) => write!(f, "{m}"),
         }
     }
 }

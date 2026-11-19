@@ -133,7 +133,8 @@ pub fn parse(argv: &[String]) -> Outcome {
                         Err(e) => return e,
                     };
             }
-            "-m" | "--merge-cells" | "--no-line-breaks" => {
+            "-m" | "--merge-cells" => opts.merge_cells = true,
+            "--no-line-breaks" => {
                 return Outcome::Fatal(format!("error: option {name} not implemented yet"));
             }
             "-c" | "--outputencoding" => outputencoding = need!(),
