@@ -42,3 +42,12 @@ local headers carry their own timestamps. The CSV goldens are stable; the
 input bytes are not. Tracked as issue #1. Until that is fixed,
 `fixtures/*.xlsx` is git-ignored and the goldens in `fixtures/*.golden.csv`
 are the reference (they were produced by upstream 0.8.6 itself).
+
+## CI is not wired up
+
+`.github/workflows/ci.yml` exists in the working tree but cannot be pushed
+with the credentials this project was published with (`x-access-token`, no
+`workflow` scope; GitHub answers `refusing to allow an OAuth App to create or
+update workflow`). CI 待接入，需 workflow scope，暂由 box 人工门禁替代：every
+release is gated by the four commands in README's Gate section, run on the box
+against the exact tree that is pushed.

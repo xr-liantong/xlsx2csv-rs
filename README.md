@@ -31,16 +31,31 @@ Gate results (`cargo fmt --check`, `cargo clippy --release --all-targets --
 
 ## Results
 
-Fixture `f6-big` (50,000 rows x 8 columns), box: Ubuntu 24.04, 2 vCPU,
-3.8 GB RAM. Three runs each, median reported:
+Box: Ubuntu 24.04, 2 vCPU, 3.8 GB RAM. Three runs each, median reported.
+Both scales are byte-identical to upstream output (`cmp` clean) — the two
+tables are **different workloads**, do not compare one row against the other
+table's row.
 
-| implementation | median wall | peak RSS |
+### 50,000 rows x 8 columns (`f6-big`, output 3,355,221 B)
+
+| implementation | median wall (3 runs) | peak RSS |
 |---|---|---|
 | xlsx2csv-rs (release) | 512 ms (509 / 512 / 539) | 20,592 KB |
 | upstream, CPython 3.12 | 2,701 ms | 24,220 KB |
 
-Speedup 5.2x with byte-identical output; memory is below upstream.
-Numbers were measured by an independent run on the box, not on a laptop.
+### 100,000 rows x 8 columns (`f7-big100k`, 4.4 MB xlsx, output 6,510,106 B)
+
+| implementation | median wall (3 runs) | peak RSS |
+|---|---|---|
+| xlsx2csv-rs (release) | 803 ms (643 / 803 / 841) | 42,624 KB |
+| upstream, CPython 3.12 | 3,136 ms (3,633 / 3,056 / 3,137) | 24,112 KB |
+
+Scaling 50k -> 100k is roughly linear in time (0.51 s -> 0.80 s) and
+sub-linear in wall for upstream (2.70 s -> 3.14 s per run spread), while
+peak RSS grows with the sheet: at 100k rows this port uses ~1.8x upstream's
+memory because it keeps the shared-string table and the parsed style table
+resident. Speedup is 5.3x at 50k and 3.9x at 100k.
+Numbers were measured on the box, not on a laptop.
 
 ## Usage
 
@@ -82,4 +97,6 @@ src/csvw.rs     csv.writer-compatible quoting
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Upstream is MIT as well.
+MIT, see [LICENSE](LICENSE). Upstream LICENSE: MIT per PyPI metadata; the
+upstream repository ships no LICENSE file, so `LICENSE` here restates MIT and
+credits Dilshod Tadjibaev and contributors.
