@@ -14,20 +14,121 @@ pub struct Args {
 pub enum Outcome {
     Run(Box<Args>),
     Version,
-    Help(String),
+    Help,
     /// Exit code 2 with the argparse-style message on stderr.
     Usage(String),
     /// Exit code 1 with an `error: ...` message.
     Fatal(String),
 }
 
-const USAGE: &str = "usage: xlsx2csv-rs [-h] [-v] [-a] [-c OUTPUTENCODING] [-d DELIMITER] \
-[--hyperlinks] [-e] [--no-line-breaks] [-f DATEFORMAT] [-t TIMEFORMAT] \
-[--floatformat FLOATFORMAT] [--sci-float] [--exclude_hidden_sheets] \
-[--ignore-formats IGNORE_FORMATS] [-l LINETERMINATOR] [-m] [-n SHEETNAME] \
-[-i] [--skipemptycolumns] [-p SHEETDELIMITER] [-q QUOTING] [-s SHEETID] \
-[--include-hidden-rows] [--ignore-percentage] xlsxfile [outfile]
-";
+/// The usage line, assembled the way argparse does it: one part per option,
+/// wrapped at 80 columns with the continuation aligned under the first part.
+const USAGE_PARTS: &[&str] = &[
+    "[-h]",
+    "[-v]",
+    "[-a]",
+    "[-c OUTPUTENCODING]",
+    "[-d DELIMITER]",
+    "[--hyperlinks]",
+    "[-e]",
+    "[--no-line-breaks]",
+    "[-E EXCLUDE_SHEET_PATTERN [EXCLUDE_SHEET_PATTERN ...]]",
+    "[-f DATEFORMAT]",
+    "[-t TIMEFORMAT]",
+    "[--floatformat FLOATFORMAT]",
+    "[--sci-float]",
+    "[-I INCLUDE_SHEET_PATTERN [INCLUDE_SHEET_PATTERN ...]]",
+    "[--exclude_hidden_sheets]",
+    "[--ignore-formats IGNORE_FORMATS [IGNORE_FORMATS ...]]",
+    "[-l LINETERMINATOR]",
+    "[-m]",
+    "[-n SHEETNAME]",
+    "[-i]",
+    "[--skipemptycolumns]",
+    "[-p SHEETDELIMITER]",
+    "[-q QUOTING]",
+    "[-s SHEETID]",
+    "[--include-hidden-rows]",
+    "[--continue-on-error]",
+    "[--ignore-percentage]",
+    "xlsxfile",
+    "[outfile]",
+];
+
+/// argparse asks the terminal for its width and keeps two columns spare; with
+/// no terminal it gets 80, so the default usable width is 78.
+fn usage_width() -> usize {
+    std::env::var("COLUMNS")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|w| *w > 20)
+        .map(|w| w - 2)
+        .unwrap_or(78)
+}
+
+pub fn usage(prog: &str) -> String {
+    let prefix = format!("usage: {prog} ");
+    let indent = " ".repeat(prefix.len());
+    let width_limit = usage_width();
+    let mut out = prefix.clone();
+    let mut width = prefix.len();
+    for (i, part) in USAGE_PARTS.iter().enumerate() {
+        if i == 0 {
+            out.push_str(part);
+            width += part.len();
+            continue;
+        }
+        // argparse starts the positional group on a line of its own.
+        if part.starts_with("xlsxfile") {
+            out.push('\n');
+            out.push_str(&indent);
+            out.push_str(part);
+            width = indent.len() + part.len();
+            continue;
+        }
+        if width + 1 + part.len() > width_limit {
+            out.push('\n');
+            out.push_str(&indent);
+            out.push_str(part);
+            width = indent.len() + part.len();
+        } else {
+            out.push(' ');
+            out.push_str(part);
+            width += 1 + part.len();
+        }
+    }
+    out.push('\n');
+    out
+}
+
+/// `xlsx2csv.py: error: ...` -- argparse prefixes the offending program name.
+pub fn error_line(prog: &str, msg: &str) -> String {
+    format!("{prog}: error: {msg}\n")
+}
+
+/// argparse reports an option by every spelling it has: `-s/--sheet`.
+fn option_label(name: &str) -> &'static str {
+    match name {
+        "-a" | "--all" => "-a/--all",
+        "-e" | "--escape" => "-e/--escape",
+        "-i" | "--ignoreempty" => "-i/--ignoreempty",
+        "-E" | "--exclude_sheet_pattern" => "-E/--exclude_sheet_pattern",
+        "-I" | "--include_sheet_pattern" => "-I/--include_sheet_pattern",
+        "-m" | "--merge-cells" => "-m/--merge-cells",
+        "-c" | "--outputencoding" => "-c/--outputencoding",
+        "-d" | "--delimiter" => "-d/--delimiter",
+        "-f" | "--dateformat" => "-f/--dateformat",
+        "-t" | "--timeformat" => "-t/--timeformat",
+        "-l" | "--lineterminator" => "-l/--lineterminator",
+        "-n" | "--sheetname" => "-n/--sheetname",
+        "-p" | "--sheetdelimiter" => "-p/--sheetdelimiter",
+        "-q" | "--quoting" => "-q/--quoting",
+        "-s" | "--sheet" => "-s/--sheet",
+        "--floatformat" => "--floatformat",
+        "--ignore-formats" => "--ignore-formats",
+        _ => "--help",
+    }
+}
 
 struct Tok {
     name: String,
@@ -68,7 +169,7 @@ pub fn parse(argv: &[String]) -> Outcome {
             _ => (arg.clone(), None),
         };
         if name == "-h" || name == "--help" {
-            return Outcome::Help(USAGE.to_string());
+            return Outcome::Help;
         }
         if name == "-v" || name == "--version" {
             return Outcome::Version;
@@ -170,7 +271,7 @@ pub fn parse(argv: &[String]) -> Outcome {
                     used.insert(j, false);
                     continue;
                 }
-                return Outcome::Usage(format!("unrecognized arguments: {other}\n{USAGE}"));
+                return Outcome::Usage(format!("unrecognized arguments: {other}"));
             }
         }
     }
@@ -183,13 +284,11 @@ pub fn parse(argv: &[String]) -> Outcome {
     }
 
     if positionals.is_empty() {
-        return Outcome::Usage(format!(
-            "the following arguments are required: xlsxfile\n{USAGE}"
-        ));
+        return Outcome::Usage("the following arguments are required: xlsxfile".to_string());
     }
     if positionals.len() > 2 {
         return Outcome::Usage(format!(
-            "unrecognized arguments: {}\n{USAGE}",
+            "unrecognized arguments: {}",
             positionals[2..].join(" ")
         ));
     }
@@ -276,7 +375,8 @@ fn take_value(
         return Ok(v);
     }
     Err(Outcome::Usage(format!(
-        "argument {name}: expected one argument"
+        "argument {}: expected one argument",
+        option_label(name)
     )))
 }
 
@@ -323,11 +423,23 @@ fn code_point(s: &str) -> Option<char> {
 }
 
 /// Entry point used by `src/bin/main.rs`: parse, dispatch, return the exit code.
-pub fn run<I: Iterator<Item = String>>(argv: I) -> i32 {
-    let argv: Vec<String> = argv.collect();
+///
+/// The program name reaches stderr exactly as argparse would print it, so a
+/// byte comparison with upstream only differs in that name (and in `argv[0]`
+/// under a different binary name it legitimately does).
+pub fn run() -> i32 {
+    let mut raw = std::env::args_os();
+    let prog = raw
+        .next()
+        .map(|p| {
+            let s = p.to_string_lossy().into_owned();
+            s.rsplit(['/', '\\']).next().unwrap_or(&s).to_string()
+        })
+        .unwrap_or_else(|| "xlsx2csv-rs".to_string());
+    let argv: Vec<String> = raw.map(|a| a.to_string_lossy().into_owned()).collect();
     match parse(&argv) {
-        Outcome::Help(text) => {
-            print!("{text}");
+        Outcome::Help => {
+            print!("{}", usage(&prog));
             0
         }
         Outcome::Version => {
@@ -335,17 +447,21 @@ pub fn run<I: Iterator<Item = String>>(argv: I) -> i32 {
             0
         }
         Outcome::Usage(msg) => {
-            eprintln!("{}", msg.trim_end());
+            // argparse prints the usage block first, then `prog: error: ...`.
+            eprint!("{}", usage(&prog));
+            eprint!("{}", error_line(&prog, &msg));
             2
         }
         Outcome::Fatal(msg) => {
-            eprintln!("{msg}");
+            // Upstream raises these with `sys.exit(str(e) + "\n")`, and
+            // `sys.exit` adds a newline of its own: two blank lines of slack.
+            eprintln!("{msg}\n");
             1
         }
         Outcome::Run(args) => match crate::port::run(&args.input, &args.opts) {
             Ok(()) => 0,
             Err(e) => {
-                eprintln!("{e}");
+                eprintln!("{e}\n");
                 e.exit_code()
             }
         },

@@ -126,3 +126,16 @@ Two smaller differences in the failure path: upstream raises an uncaught
 the same partial bytes, exits 1, and prints one line. Upstream reports a range
 of positions (`in position 2-3`) when a row has several unencodable characters;
 this port reports the first one.
+
+## argparse text on stderr (#5)
+
+`usage`/`error` lines are now byte-identical to argparse, including the wrapped
+usage block, the `prog: error: ...` prefix and the extra blank line that
+`sys.exit(str(e) + "\n")` leaves. Two deliberate differences remain:
+
+- The program name is `argv[0]`'s basename, as argparse does. Upstream prints
+  `xlsx2csv.py` because that is how it is invoked; comparing bytes therefore
+  needs the same binary name (`cp target/release/xlsx2csv-rs /tmp/xlsx2csv.py`).
+- `-d ''` crashes upstream (`IndexError: string index out of range`, exit 1,
+  traceback on stderr). We report `error: invalid delimiter` with exit 1 and no
+  output; the exit code and stdout match, the traceback does not.
