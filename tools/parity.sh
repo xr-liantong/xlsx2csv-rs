@@ -120,6 +120,8 @@ check_file_first f4-sheets f4-sheets.i-two.golden.csv -a -I S1 S2
 check_file_first f4-sheets f4-sheets.e-s.golden.csv -a -E '^S'
 check f9-shared f9-shared.golden.csv
 check f9-shared f9-shared.e.golden.csv -e
+check f11-literal-cr f11-literal-cr.golden.csv
+check f11-literal-cr f11-literal-cr.e.golden.csv -e
 
 # Values the differential fuzz turned into bugs: negative fractions in time
 # formats, `--floatformat` precision, and the QUOTE_NONNUMERIC rule.

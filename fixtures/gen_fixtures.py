@@ -369,6 +369,27 @@ def f9_shared_strings():
     return path
 
 
+
+def f11_literal_cr():
+    """Issue #11: a *literal* 0x0D inside a sharedStrings `<t>`. XML 1.0 §2.11
+    turns it into LF; entity `&#13;` is exempt (see f9). Derived from f9 so the
+    two fixtures differ only in that byte."""
+    src = os.path.join(OUT, "f9-shared.xlsx")
+    if not os.path.exists(src):
+        f9_shared_strings()
+    path = os.path.join(OUT, "f11-literal-cr.xlsx")
+    with zipfile.ZipFile(src) as zin:
+        items = [(i, zin.read(i.filename)) for i in zin.infolist()]
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item, data in items:
+            if item.filename == "xl/sharedStrings.xml":
+                data = data.replace(b"carriage&#13;return", b"carriage\rreturn")
+            info = zipfile.ZipInfo(item.filename, item.date_time)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            zout.writestr(info, data)
+    PATHS.append(path)
+
+
 def main(argv):
     global OUT
     if len(argv) > 1:
@@ -384,6 +405,7 @@ def main(argv):
     f8_merged()
     f9_shared_strings()
     f10_edges()
+    f11_literal_cr()
     for path in PATHS:
         normalize(path)
 

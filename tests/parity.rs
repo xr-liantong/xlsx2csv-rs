@@ -315,3 +315,23 @@ fn stderr_matches_argparse_shape() {
     // sys.exit(str(e) + "\n") leaves two newlines, and that is the whole message.
     assert_eq!(out.stderr, b"error: invalid quoting\n\n");
 }
+
+/// Issue #11: XML 1.0 §2.11 end-of-line handling. A *literal* `\r` in a text
+/// node becomes `\n` (f11); a `&#13;` character reference does not (f9).
+#[test]
+fn xml_eol_normalisation_matches_goldens() {
+    for (fixture, golden, escape) in [
+        ("f9-shared", "f9-shared.golden.csv", false),
+        ("f9-shared", "f9-shared.e.golden.csv", true),
+        ("f11-literal-cr", "f11-literal-cr.golden.csv", false),
+        ("f11-literal-cr", "f11-literal-cr.e.golden.csv", true),
+    ] {
+        run_case(fixture, golden, |book, opts| {
+            let mut opts = opts.clone();
+            opts.escape_strings = escape;
+            let mut buf = Vec::new();
+            book.convert_one(1, &opts, &mut buf).expect("convert");
+            buf
+        });
+    }
+}

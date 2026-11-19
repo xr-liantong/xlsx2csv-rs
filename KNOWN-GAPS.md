@@ -139,3 +139,10 @@ usage block, the `prog: error: ...` prefix and the extra blank line that
 - `-d ''` crashes upstream (`IndexError: string index out of range`, exit 1,
   traceback on stderr). We report `error: invalid delimiter` with exit 1 and no
   output; the exit code and stdout match, the traceback does not.
+
+## XML end-of-line handling (#11, fixed)
+
+A *literal* `\r` (0x0D) in a text node is normalised to `\n` (XML 1.0 §2.11)
+before entities are decoded, so `&#13;` still yields a real CR — same split as
+expat/upstream. Covered by `fixtures/f11-literal-cr.xlsx` (literal CR) and
+`fixtures/f9-shared.xlsx` (character reference), both with and without `-e`.

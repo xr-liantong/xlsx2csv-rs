@@ -2,7 +2,7 @@
 //! (`si` / `t` / `rPh`), including the `-e` escape helpers.
 
 use crate::errors::PortError;
-use crate::ooxml::{local_name, text_of};
+use crate::ooxml::{local_name, normalize_eol, text_of};
 use quick_xml::events::Event;
 use quick_xml::Reader;
 
@@ -52,7 +52,7 @@ impl SharedStrings {
                         }
                         "t" => {
                             if in_t {
-                                value.push_str(&text_of(&text));
+                                value.push_str(&text_of(&normalize_eol(&text)));
                             }
                             in_t = false;
                         }

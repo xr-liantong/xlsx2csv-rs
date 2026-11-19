@@ -106,13 +106,13 @@ generation step before the end-to-end tests can compare anything:
 ```
 python3 -m pip install openpyxl          # only dependency of the generator
 python3 fixtures/gen_fixtures.py         # writes fixtures/*.xlsx, reproducible
-tools/parity.sh                          # 30 cases against fixtures/*.golden.csv
+tools/parity.sh                          # 32 cases against fixtures/*.golden.csv
 ```
 
-The 30 cases are 18 `check` (candidate binary, expected golden), 9
+The 32 cases are 20 `check` (candidate binary, expected golden), 9
 `check_file_first` (input path before a `nargs='+'` option, golden tracked)
 and 3 `check_enc` (`-c` output encodings). `f6-big`'s golden is not tracked, so
-a clean clone reports 29 passed and 1 skipped; see `ALLOW_SKIP` below.
+a clean clone reports 31 passed and 1 skipped; see `ALLOW_SKIP` below.
 
 `gen_fixtures.py` takes an optional output directory (`python3
 fixtures/gen_fixtures.py /tmp/fx`) and produces byte-identical workbooks on
@@ -128,7 +128,7 @@ git by design, so `f6-big` is the whole allowlist:
 ```
 $ git archive HEAD | tar -x -C /tmp/c1 && cd /tmp/c1
 $ python3 fixtures/gen_fixtures.py && bash tools/parity.sh; echo rc=$?
-parity: 29 passed, 0 failed, 1 skipped, 0 unexpected skip(s)
+parity: 31 passed, 0 failed, 1 skipped, 0 unexpected skip(s)
 rc=0
 
 $ mv fixtures/f8-merged.xlsx /tmp/ && bash tools/parity.sh; echo rc=$?

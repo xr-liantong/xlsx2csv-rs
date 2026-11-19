@@ -86,6 +86,30 @@ pub(crate) fn attr(e: &quick_xml::events::BytesStart<'_>, key: &str) -> Option<S
     None
 }
 
+/// XML 1.0 §2.11 end-of-line handling: a *literal* `\r\n` or `\r` in the
+/// source text becomes `\n`. Character references such as `&#13;` are exempt
+/// (they decode afterwards), which is why this runs on raw bytes before
+/// unescaping. `quick-xml` does not do this, expat (upstream) does.
+pub(crate) fn normalize_eol(raw: &[u8]) -> Vec<u8> {
+    if !raw.contains(&b'\r') {
+        return raw.to_vec();
+    }
+    let mut out = Vec::with_capacity(raw.len());
+    let mut i = 0;
+    while i < raw.len() {
+        if raw[i] == b'\r' {
+            if raw.get(i + 1) == Some(&b'\n') {
+                i += 1;
+            }
+            out.push(b'\n');
+        } else {
+            out.push(raw[i]);
+        }
+        i += 1;
+    }
+    out
+}
+
 pub(crate) fn text_of(raw: &[u8]) -> String {
     let s = String::from_utf8_lossy(raw);
     match quick_xml::escape::unescape(&s) {
@@ -259,5 +283,28 @@ impl Workbook {
 
     pub fn sheet_id_by_name(&self, name: &str) -> Option<u32> {
         self.sheets.iter().find(|s| s.name == name).map(|s| s.index)
+    }
+}
+
+#[cfg(test)]
+mod eol_tests {
+    use super::normalize_eol;
+
+    #[test]
+    fn literal_cr_and_crlf_become_lf() {
+        assert_eq!(normalize_eol(b"a\rb"), b"a\nb");
+        assert_eq!(normalize_eol(b"a\r\nb"), b"a\nb");
+        assert_eq!(normalize_eol(b"a\r\r\nb"), b"a\n\nb");
+        assert_eq!(normalize_eol(b"a\nb"), b"a\nb");
+        assert_eq!(normalize_eol(b"plain"), b"plain");
+    }
+
+    #[test]
+    fn character_reference_is_not_normalised() {
+        // the entity is decoded after this point, so its CR must survive
+        assert_eq!(
+            normalize_eol(b"carriage&#13;return"),
+            b"carriage&#13;return"
+        );
     }
 }

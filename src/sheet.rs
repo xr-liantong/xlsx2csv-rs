@@ -15,7 +15,7 @@ use quick_xml::Reader;
 use crate::csvw::CsvWriter;
 use crate::errors::PortError;
 use crate::fmtval::{format_cell, FmtOptions};
-use crate::ooxml::Relationships;
+use crate::ooxml::{normalize_eol, Relationships};
 use crate::styles::Styles;
 
 pub struct SheetOptions<'a> {
@@ -238,10 +238,12 @@ pub fn convert_sheet<W: Write>(
                 _ => {}
             },
             Event::Text(ref e) if in_cell && in_value => {
-                let text = e
-                    .unescape()
+                let raw = normalize_eol(e.as_ref());
+                let text =
+                    std::str::from_utf8(&raw).map_err(|err| PortError::Xml(err.to_string()))?;
+                let text = quick_xml::escape::unescape(text)
                     .map_err(|err| PortError::Xml(err.to_string()))?;
-                cell_text.push_str(&escape_v_text(&ctx.options, in_v, &text));
+                cell_text.push_str(&escape_v_text(&ctx.options, in_v, text.as_ref()));
             }
             Event::CData(ref e) if in_cell && in_value => {
                 let text = String::from_utf8_lossy(e.as_ref());
