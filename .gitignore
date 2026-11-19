@@ -12,3 +12,4 @@ fixtures/*.golden.csv
 !fixtures/f3-*.golden.csv
 !fixtures/f4-*.golden.csv
 !fixtures/f5-*.golden.csv
+__pycache__/

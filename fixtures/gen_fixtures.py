@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the six xlsx parity fixtures for xlsx2csv-rs.
+"""Generate the seven xlsx parity fixtures for xlsx2csv-rs.
 
 Covers: f1 basic/unicode, f2 dates+percent, f3 floats, f4 multi-sheet
 (incl. hidden), f5 quirks (merged / rich text / entities / long cell /
@@ -148,9 +148,11 @@ def f5_quirks():
     path = save(wb, "f5-quirks.xlsx")
 
     def add_cached(xml):
-        for ref, formula, value in (("A8", "1+2", "3"), ("B8", "SUM(1,2)", "3")):
-            pat = r'(<c r="%s"[^>]*><f>[^<]*</f>)<v\s*/>(</c>)' % ref
-            xml = re.sub(pat, lambda m, v=value: m.group(1) + "<v>" + v + "</v>" + m.group(2), xml)
+        # openpyxl writes `<v></v>` (older builds: `<v/>`) for a formula cell.
+        xml = re.sub(r"<v\s*/>", "<v></v>", xml)
+        for ref, value in (("A8", "3"), ("B8", "3")):
+            pat = r'(<c r="%s"[^>]*><f>[^<]*</f>)<v></v>' % ref
+            xml = re.sub(pat, lambda m, v=value: m.group(1) + "<v>" + v + "</v>", xml, count=1)
         return xml
 
     hits = patch_zip(path, "xl/worksheets/sheet1.xml", add_cached)
@@ -184,6 +186,129 @@ def f6_big(rows=50000):
     return save(wb, "f6-big.xlsx")
 
 
+
+def f7_hyperlinks():
+    """Hyperlinked cells: plain text, unicode, empty, mailto, date, percent,
+    number, and a range ref patched in afterwards (A6:A7)."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "links"
+    ws["A1"] = "site"
+    ws["A1"].hyperlink = "https://example.com/a?b=1"
+    ws["B1"] = "plain"
+    ws["A2"] = "\u4e2d\u6587\u94fe\u63a5"
+    ws["A2"].hyperlink = "https://example.org/\u8def\u5f84"
+    ws["A3"].hyperlink = "https://example.net/empty"
+    ws["A4"] = "mail"
+    ws["A4"].hyperlink = "mailto:x@example.com"
+    ws["A5"] = dt.date(2023, 3, 15)
+    ws["A5"].number_format = "yyyy-mm-dd"
+    ws["A5"].hyperlink = "https://example.com/day"
+    ws["A6"] = 0.5
+    ws["A6"].number_format = "0.00%"
+    ws["A6"].hyperlink = "https://example.com/pct"
+    ws["A7"] = 42
+    ws["A8"] = "tab\tinside"
+    ws["A8"].hyperlink = "https://example.com/tab"
+    path = save(wb, "f7-hyperlinks.xlsx")
+
+    def widen(xml):
+        return xml.replace('ref="A6"', 'ref="A6:A7"', 1)
+
+    hits = patch_zip(path, "xl/worksheets/sheet1.xml", widen)
+    print("f7 range patch applied:", hits)
+    return path
+
+
+
+def f8_merged():
+    """`-m` fixture: a merge whose follower cells really exist in the sheet
+    XML (openpyxl omits them, so they are patched back in), both horizontal
+    and vertical."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "merged"
+    ws["A1"] = "wide"
+    ws.merge_cells("A1:C1")
+    ws["A2"] = 7
+    ws.merge_cells("A2:B2")
+    ws["D1"] = "tail"
+    path = save(wb, "f8-merged.xlsx")
+
+    def add_followers(xml):
+        xml = xml.replace('<c r="D1"', '<c r="B1"/><c r="C1"/><c r="D1"', 1)
+        return xml.replace(
+            '<c r="A2" t="n"><v>7</v></c>', '<c r="A2" t="n"><v>7</v></c><c r="B2"/>', 1
+        )
+
+    hits = patch_zip(path, "xl/worksheets/sheet1.xml", add_followers)
+    print("f8 follower patch applied:", hits)
+    return path
+
+
+def f9_shared_strings():
+    """`-e` fixture: real sharedStrings table. openpyxl 3.1.5 emits inline
+    strings, so the cells are rewritten to `t="s"` and a sharedStrings part is
+    added -- otherwise `-e` has nothing to escape."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "sst"
+    ws["A1"] = "tab\tinside"
+    ws["A2"] = "line\ninside"
+    ws["A3"] = "carriage\rreturn"
+    ws["A4"] = "plain"
+    ws["A5"] = "中文\temoji \U0001f600"
+    ws["B1"] = 1
+    path = save(wb, "f9-shared.xlsx")
+
+    cell_re = re.compile(
+        r'<c r="([A-Z]+\d+)"([^>]*?)t="inlineStr"><is><t[^>]*>(.*?)</t></is></c>'
+    )
+    ctype_override = (
+        '<Override PartName="/xl/sharedStrings.xml" ContentType='
+        '"application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>'
+    )
+    rel = (
+        '<Relationship Id="rIdSst" Type="http://schemas.openxmlformats.org/'
+        'officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>'
+    )
+
+    with zipfile.ZipFile(path) as zin:
+        items = [(i, zin.read(i.filename)) for i in zin.infolist()]
+    strings = []
+    out = []
+    for item, data in items:
+        if item.filename == "xl/worksheets/sheet1.xml":
+            text = data.decode("utf-8")
+
+            def repl(m):
+                strings.append(m.group(3))
+                return '<c r="%s"%s t="s"><v>%d</v></c>' % (
+                    m.group(1), m.group(2).rstrip(" "), len(strings) - 1
+                )
+
+            data = cell_re.sub(repl, text).encode("utf-8")
+        elif item.filename == "[Content_Types].xml":
+            data = data.decode("utf-8").replace("</Types>", ctype_override + "</Types>", 1).encode("utf-8")
+        elif item.filename == "xl/_rels/workbook.xml.rels":
+            data = data.decode("utf-8").replace("</Relationships>", rel + "</Relationships>", 1).encode("utf-8")
+        out.append((item, data))
+
+    sst = '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="%d" uniqueCount="%d">' % (len(strings), len(strings))
+    for t in strings:
+        sst += '<si><t xml:space="preserve">%s</t></si>' % t
+    sst += "</sst>"
+
+    tmp = path + ".tmp"
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item, data in out:
+            zout.writestr(item, data)
+        zout.writestr("xl/sharedStrings.xml", sst.encode("utf-8"))
+    os.replace(tmp, path)
+    print("f9 shared strings:", len(strings))
+    return path
+
+
 def main():
     f1_basic()
     f2_dates()
@@ -191,6 +316,8 @@ def main():
     f4_sheets()
     f5_quirks()
     f6_big()
+    f7_hyperlinks()
+    f9_shared_strings()
 
 
 if __name__ == "__main__":

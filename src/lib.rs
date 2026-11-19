@@ -13,6 +13,7 @@ pub mod dates;
 pub mod errors;
 pub mod fmtval;
 pub mod ooxml;
+pub mod pattern;
 pub mod port;
 pub mod sheet;
 pub mod sst;

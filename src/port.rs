@@ -12,7 +12,8 @@ use std::path::Path;
 use crate::csvw::{CsvWriter, Quoting};
 use crate::errors::PortError;
 use crate::ooxml::{ContentTypes, Package, Relationships, Workbook};
-use crate::sheet::{convert_sheet, SheetContext, SheetOptions};
+use crate::pattern::{any_matches, none_matches};
+use crate::sheet::{collect_hyperlinks, collect_merges, convert_sheet, SheetContext, SheetOptions};
 use crate::sst::SharedStrings;
 use crate::styles::Styles;
 
@@ -35,6 +36,17 @@ pub struct ConvertOptions {
     pub ignore_percentage: bool,
     pub ignore_formats: Vec<String>,
     pub exclude_hidden_sheets: bool,
+    /// `-I`: keep only sheets whose name matches one of these (empty = all).
+    pub include_patterns: Vec<String>,
+    /// `-E`: drop sheets whose name matches one of these.
+    pub exclude_patterns: Vec<String>,
+    pub hyperlinks: bool,
+    /// `-m`: fill merged followers with the top-left cell's value.
+    pub merge_cells: bool,
+    /// `--no-line-breaks`: line breaks and tabs inside a cell become spaces.
+    pub no_line_breaks: bool,
+    /// `--continue-on-error`: directory mode keeps going after a bad file.
+    pub continue_on_error: bool,
     pub sheet_id: u32,
     pub sheet_name: Option<String>,
     pub out_path: Option<String>,
@@ -58,6 +70,12 @@ impl Default for ConvertOptions {
             ignore_percentage: false,
             ignore_formats: vec![],
             exclude_hidden_sheets: false,
+            include_patterns: vec!["^.*$".to_string()],
+            exclude_patterns: vec![],
+            hyperlinks: false,
+            merge_cells: false,
+            no_line_breaks: false,
+            continue_on_error: false,
             sheet_id: 1,
             sheet_name: None,
             out_path: None,
@@ -181,6 +199,33 @@ impl Xlsx2csv {
     ) -> Result<(), PortError> {
         let path = self.sheet_path(sheet_index)?;
         let xml = self.pkg.require_part(&path)?;
+        // upstream reads the worksheet's own relationships part and only then
+        // looks for <hyperlinks>; a missing part means no hyperlinks at all.
+        let mut hyperlinks = std::collections::HashMap::new();
+        if opts.hyperlinks {
+            let rels_path = sheet_rels_path(&path);
+            if let Some(rels_xml) = self.pkg.read_part(&rels_path)? {
+                let rels = Relationships::parse(&rels_xml)?;
+                hyperlinks = collect_hyperlinks(&xml, &rels)?;
+            }
+        }
+        let merged = if opts.merge_cells {
+            collect_merges(&xml)
+        } else {
+            std::collections::HashMap::new()
+        };
+        // `-e`: upstream escapes the shared-string table once, before any sheet
+        // is written, and rewrites `<v>` entities as literal \\r \\n \\t.
+        let escaped_strings: Option<Vec<String>> = if opts.escape_strings {
+            Some(
+                self.shared_strings
+                    .iter()
+                    .map(|s| escape_line_breaks(s))
+                    .collect(),
+            )
+        } else {
+            None
+        };
         let sheet_opts = SheetOptions {
             dateformat: opts.dateformat.as_deref(),
             timeformat: &opts.timeformat,
@@ -191,10 +236,14 @@ impl Xlsx2csv {
             skip_hidden_rows: opts.skip_hidden_rows,
             include_empty: opts.include_empty,
             skip_empty_columns: opts.skip_empty_columns,
+            hyperlinks,
+            merged,
+            no_line_breaks: opts.no_line_breaks,
+            escape_strings: opts.escape_strings,
         };
         let ctx = SheetContext {
             styles: &self.styles,
-            shared_strings: &self.shared_strings,
+            shared_strings: escaped_strings.as_deref().unwrap_or(&self.shared_strings),
             date1904: self.workbook.date1904,
             options: sheet_opts,
         };
@@ -230,6 +279,12 @@ impl Xlsx2csv {
             {
                 continue;
             }
+            if !any_matches(&opts.include_patterns, &name)? {
+                continue;
+            }
+            if !none_matches(&opts.exclude_patterns, &name)? {
+                continue;
+            }
             if !opts.sheet_delimiter.is_empty() {
                 writer.write_raw(&format!(
                     "{} {} - {}{}",
@@ -243,11 +298,28 @@ impl Xlsx2csv {
     }
 }
 
+/// upstream `SharedStrings.escape_strings()`.
+fn escape_line_breaks(value: &str) -> String {
+    value
+        .replace('\r', "\\r")
+        .replace('\n', "\\n")
+        .replace('\t', "\\t")
+}
+
 fn open_out_file(path: &str) -> Result<BufWriter<File>, PortError> {
     Ok(BufWriter::new(File::create(path)?))
 }
 
 /// Bench helper: convert `input` into a throwaway sink.
+/// `dirname(path)/_rels/basename(path).rels`, the worksheet's own rels part.
+fn sheet_rels_path(sheet_path: &str) -> String {
+    let (dir, file) = match sheet_path.rfind('/') {
+        Some(i) => (&sheet_path[..i], &sheet_path[i + 1..]),
+        None => ("", sheet_path),
+    };
+    format!("{dir}/_rels/{file}.rels")
+}
+
 pub fn convert(input: &str, opts: &ConvertOptions) -> Result<(), PortError> {
     let mut book = Xlsx2csv::open(input)?;
     let sheet_id = match opts.sheet_name.as_deref() {
@@ -267,15 +339,59 @@ pub fn convert(input: &str, opts: &ConvertOptions) -> Result<(), PortError> {
 /// CLI driver: upstream `main` after argument decoding.
 pub fn run(input: &str, opts: &ConvertOptions) -> Result<(), PortError> {
     if Path::new(input).is_dir() {
-        return Err(PortError::Unsupported("directory input"));
+        return run_dir(input, opts);
     }
     if input != "-" && !Path::new(input).exists() {
         return Err(PortError::InputNotFound);
     }
-    if opts.escape_strings {
-        return Err(PortError::Unsupported("`-e/--escape`"));
-    }
+    run_one(input, opts)
+}
 
+/// upstream `convert_recursive`: every file in the tree becomes `<name>csv`
+/// next to itself, unless an outfile (or an outfile directory) was given.
+fn run_dir(dir: &str, opts: &ConvertOptions) -> Result<(), PortError> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let full = entry.path();
+        let full = full.to_string_lossy().to_string();
+        if Path::new(&full).is_dir() {
+            run_dir(&full, opts)?;
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        let out = match opts.out_path.as_deref() {
+            None => format!("{}csv", drop_tail(&full, 4)),
+            Some(path) if Path::new(path).is_dir() => Path::new(path)
+                .join(format!("{}csv", drop_tail(&name, 4)))
+                .to_string_lossy()
+                .to_string(),
+            Some(path) => path.to_string(),
+        };
+        println!("Converting {full} to {out}");
+        let mut sub = opts.clone();
+        sub.out_path = Some(out.clone());
+        if let Err(e) = run_one(&full, &sub) {
+            if opts.continue_on_error {
+                eprintln!("ERROR processing file '{full}': {e}");
+                continue;
+            }
+            return Err(e);
+        }
+    }
+    Ok(())
+}
+
+/// Python `s[:-n]` for `str` (character based, not bytes).
+fn drop_tail(s: &str, n: usize) -> &str {
+    let chars = s.chars().count();
+    if chars <= n {
+        return "";
+    }
+    let cut = s.char_indices().nth(chars - n).map(|(i, _)| i).unwrap_or(0);
+    &s[..cut]
+}
+
+fn run_one(input: &str, opts: &ConvertOptions) -> Result<(), PortError> {
     let mut book = Xlsx2csv::open(input)?;
 
     // upstream main: `if options.sheetname: sheetid = getSheetIdByName(...)`

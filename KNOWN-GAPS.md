@@ -4,22 +4,60 @@ Acceptance for v0.1.0: byte-identical output to upstream 0.8.6 on the ten
 golden cases in `fixtures/`. Everything below is outside that net, either
 because it is unimplemented or because no fixture covers it yet.
 
-## Not implemented (exit 1 with `not implemented yet`)
+## Not implemented
 
-| option | upstream behaviour |
-|---|---|
-| `-m`, `--merge-cells` | emit merged ranges as extra rows |
-| `--hyperlinks` | `-m` plus hyperlink attributes from sheet rels |
-| `--no-line-breaks` | strip newlines inside cell text |
-| `-E`, `-I` | exclude / include sheet name patterns (nargs) |
+Nothing: every upstream option is implemented; `-c` is weaker (see below).
+
+
+`--hyperlinks` is implemented and covered by `fixtures/f7-hyperlinks.xlsx`
+(single-cell refs, an `A6:A7` range ref, unicode target, empty cell, mailto,
+date/percent/number cells). Its output stays byte-identical to upstream,
+including the quirk that a linked cell with no text prints the URL as value.
+
+`-E` / `-I` are implemented for the `re` subset we can honour: literals, `.`,
+`[...]` with ranges, `*`, `+`, `?`, `^`, `$`, `\x`. Patterns using groups,
+alternation or `{m,n}` are rejected with exit 1 and a message naming the
+pattern, instead of silently selecting different sheets. `-E`/`-I` only filter
+the all-sheets mode (`-a`), exactly like upstream, and take their values before
+the input path because they are `nargs='+'`.
+
+`--no-line-breaks` is implemented: `\r`, `\n` and `\t` inside a cell value
+become spaces, after merge substitution and hyperlink wrapping, as upstream
+does it.
+
+`-m` / `--merge-cells` is implemented: every cell of a `ref="A1:B2"` range takes
+the top-left cell's already-wrapped value, exactly like upstream. Unlike
+upstream, a range whose followers appear *before* the corner exits 1 with
+`merged cell B2 precedes its corner A2` instead of a Python `KeyError`
+traceback; a range with a single-cell ref is ignored, as upstream does.
+
+A CR (`\r`) inside a field is always quoted, like CPython's `_csv`, even when
+the terminator does not contain it; `fixtures/f9-shared.xlsx` covers that.
 
 ## Accepted but weaker than upstream
 
 | option | state |
 |---|---|
 | `-c`, `--outputencoding` | parsed, output is always UTF-8 |
-| `-e`, `--escape` | parsed, `\r\n\t` escaping is not applied |
-| directory as input | upstream converts every file recursively; we exit 1 |
+
+Directory input is implemented (`convert_recursive`): every file in the tree
+becomes `<name>csv` next to itself (upstream's `[:-4] + "csv"` naming, so a
+`README.txt` becomes `READMEcsv`), `--continue-on-error` walks past a file that
+is not a zip, and an outfile directory collects the results. Upstream lists
+entries in filesystem order, so the order of the `Converting ... to ...` lines
+is not part of the contract.
+
+## `-e` / `--escape`
+
+Two paths, as upstream has: the shared-string table is escaped once before any
+sheet is written, and `<v>` bodies get `\\r` / `\\n` / `\\t` for embedded
+CR/LF/TAB. Inline strings (`t="inlineStr"`, what openpyxl 3.1.5 writes) are not
+escaped, which is also upstream's behaviour -- `fixtures/f9-shared.xlsx` carries
+a real sharedStrings part so the escaping path is actually exercised.
+
+One deliberate difference: upstream rewrites only the XML entities `&#13;`,
+`&#10;`, `&#9;` inside `<v>`; we escape the decoded characters, so a raw CR in
+a `<v>` body is escaped too. A `<v>` body only holds numbers in practice.
 
 ## Known divergences
 
@@ -43,14 +81,11 @@ input bytes are not. Tracked as issue #1. Until that is fixed,
 `fixtures/*.xlsx` is git-ignored and the goldens in `fixtures/*.golden.csv`
 are the reference (they were produced by upstream 0.8.6 itself).
 
-`fixtures/f7-big100k.xlsx` (the 100k-row benchmark workbook) is generated the
-same way and stays out of git for the same reason.
-
 ## CI is not wired up
 
-`.github/workflows/ci.yml` exists in the working tree but cannot be pushed
-with the credentials this project was published with (`x-access-token`, no
-`workflow` scope; GitHub answers `refusing to allow an OAuth App to create or
-update workflow`). CI 待接入，需 workflow scope，暂由 box 人工门禁替代：every
+There is no CI file in the repository: the `x-access-token` this project is
+published with has no `workflow` scope (GitHub answers `refusing to allow an
+OAuth App to create or update workflow`), so a committed workflow block would
+make every push fail. CI 待接入，需 workflow scope，暂由 box 人工门禁替代：every
 release is gated by the four commands in README's Gate section, run on the box
 against the exact tree that is pushed.

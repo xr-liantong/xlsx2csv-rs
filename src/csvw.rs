@@ -61,6 +61,7 @@ impl<W: Write> CsvWriter<W> {
                 Quoting::None => {
                     if field.contains(self.delimiter)
                         || field.contains('"')
+                        || field.contains(['\r', '\n'])
                         || field.chars().any(|c| self.terminator.contains(c))
                     {
                         return Err(PortError::Io(io::Error::new(
@@ -93,8 +94,11 @@ impl<W: Write> CsvWriter<W> {
     }
 
     fn minimal_needs_quote(&self, field: &str) -> bool {
+        // CPython's `_csv` always quotes `\r` and `\n`, whatever the
+        // terminator is; upstream relies on that for CR-only fields.
         field.contains(self.delimiter)
             || field.contains('"')
+            || field.contains(['\r', '\n'])
             || field.chars().any(|c| self.terminator.contains(c))
     }
 }
