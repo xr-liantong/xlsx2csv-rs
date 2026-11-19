@@ -10,6 +10,26 @@ set -u
 BIN=${1:-target/release/xlsx2csv-rs}
 FIX=${2:-fixtures}
 
+# A clean clone cannot run every case: `f6-big`'s golden is 3.3 MB and stays
+# out of git on purpose. That one skip is expected; any other skip means a
+# fixture or golden was lost, and silently passing would hide it (issue #7).
+ALLOW_SKIP=${ALLOW_SKIP:-f6-big}
+
+# `skip_case <fixture> <reason>`: allowed skips are counted, everything else is
+# a setup error and turns the run into exit 2.
+skip_case() {
+    case " $ALLOW_SKIP " in
+        *" $1 "*)
+            echo "SKIP $1 ($2, allowed)"
+            skip=$((skip + 1))
+            ;;
+        *)
+            echo "SKIP $1 ($2) -- not in ALLOW_SKIP=\"$ALLOW_SKIP\""
+            bad=$((bad + 1))
+            ;;
+    esac
+}
+
 # `nargs='+'` options swallow a trailing path, so these cases put the input first,
 # the way argparse expects: `xlsx2csv <file> -I <pattern>`.
 check_file_first() {
@@ -19,8 +39,7 @@ check_file_first() {
     xlsx="$FIX/$fixture.xlsx"
     want="$FIX/$golden"
     if [ ! -f "$xlsx" ] || [ ! -f "$want" ]; then
-        echo "SKIP $fixture $* (missing fixture or golden)"
-        skip=$((skip + 1))
+        skip_case "$fixture" "missing fixture or golden"
         return
     fi
     if [ -n "${UPSTREAM:-}" ]; then
@@ -52,6 +71,7 @@ trap 'rm -rf "$tmp"' EXIT INT TERM
 pass=0
 fail=0
 skip=0
+bad=0
 
 check() {
     fixture=$1
@@ -60,13 +80,11 @@ check() {
     xlsx="$FIX/$fixture.xlsx"
     want="$FIX/$golden"
     if [ ! -f "$xlsx" ]; then
-        echo "SKIP $fixture $* (no $xlsx)"
-        skip=$((skip + 1))
+        skip_case "$fixture" "no $xlsx"
         return
     fi
     if [ ! -f "$want" ]; then
-        echo "SKIP $fixture $* (no $want)"
-        skip=$((skip + 1))
+        skip_case "$fixture" "no $want"
         return
     fi
     "$BIN" "$@" "$xlsx" >"$tmp/got" 2>"$tmp/err"
@@ -123,8 +141,7 @@ check_enc() {
     xlsx="$FIX/$fixture.xlsx"
     want="$FIX/$golden"
     if [ ! -f "$xlsx" ] || [ ! -f "$want" ]; then
-        echo "SKIP $fixture -c $enc (missing fixture or golden)"
-        skip=$((skip + 1))
+        skip_case "$fixture" "missing fixture or golden (-c $enc)"
         return
     fi
     mkdir -p "$tmp"
@@ -142,6 +159,10 @@ check_enc f3-floats f3-floats.utf16le.golden.csv utf-16-le
 check_enc f3-floats f3-floats.cp1252.golden.csv cp1252
 check_enc f3-floats f3-floats.utf16.golden.csv utf-16
 
-echo "parity: $pass passed, $fail failed, $skip skipped"
+echo "parity: $pass passed, $fail failed, $skip skipped, $bad unexpected skip(s)"
+[ "$bad" -eq 0 ] || {
+    echo "parity: unexpected skip -- a fixture or golden is missing (allowed: $ALLOW_SKIP)" >&2
+    exit 2
+}
 [ "$fail" -eq 0 ] || exit 1
 exit 0
