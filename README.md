@@ -98,6 +98,26 @@ cargo clippy --release --all-targets -- -D warnings
 cargo test --release
 ```
 
+### Fixtures and parity
+
+The `.xlsx` inputs are generated, not tracked, so a clean clone needs one
+generation step before the end-to-end tests can compare anything:
+
+```
+python3 -m pip install openpyxl          # only dependency of the generator
+python3 fixtures/gen_fixtures.py         # writes fixtures/*.xlsx, reproducible
+tools/parity.sh                          # 20 cases against fixtures/*.golden.csv
+```
+
+`gen_fixtures.py` takes an optional output directory (`python3
+fixtures/gen_fixtures.py /tmp/fx`) and produces byte-identical workbooks on
+every run: `docProps/core.xml` and the zip entry timestamps are pinned, so two
+runs hash the same. `tools/parity.sh` takes a binary and a fixtures directory as
+optional arguments (`tools/parity.sh /tmp/fx/xlsx2csv-rs /tmp/fx`) and prints
+`N passed, M failed, K skipped`; a case is skipped only when its input or
+golden is absent. `f6-big.golden.csv` (3.3 MB) is not tracked by design, so on
+a clean clone the expected line is `20 passed, 0 failed, 1 skipped`.
+
 ## Layout
 
 ```

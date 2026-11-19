@@ -5,10 +5,11 @@ Covers: f1 basic/unicode, f2 dates+percent, f3 floats, f4 multi-sheet
 (incl. hidden), f5 quirks (merged / rich text / entities / long cell /
 formula with cached value), f6 big (50000 rows x 8 cols, bench input).
 
-Run: python3 gen_fixtures.py   (writes fixtures/*.xlsx next to this file)
+Run: python3 gen_fixtures.py [OUTDIR]   (default: next to this file)
 """
 import datetime as dt
 import os
+import sys
 import re
 import zipfile
 
@@ -16,12 +17,43 @@ from openpyxl import Workbook
 from openpyxl.cell import WriteOnlyCell
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# Where the .xlsx files go. Overridden by argv[1] (see main), so the fixtures
+# can be generated outside the repository (issue #1: the output directory used
+# to be ignored, which made "run it into /tmp" silently write into fixtures/).
+OUT = HERE
+# Every file save() writes, so main() can stamp them all at the end.
+PATHS = []
+# A fixture must be byte-identical on every run (issue #1): openpyxl would
+# otherwise stamp docProps/core.xml and every zip entry with the current time.
+FIXED_TIME = (1980, 1, 1, 0, 0, 0)
+FIXED_STAMP = b"2024-01-01T00:00:00Z"
 
 
 def save(wb, name):
-    path = os.path.join(HERE, name)
+    path = os.path.join(OUT, name)
     wb.save(path)
+    PATHS.append(path)
     print("%-18s %8d bytes" % (name, os.path.getsize(path)))
+    return path
+
+
+def normalize(path):
+    """Rewrite a workbook with fixed timestamps so its bytes are reproducible."""
+    tmp = path + ".tmp"
+    with zipfile.ZipFile(path) as zin, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "docProps/core.xml":
+                data = re.sub(
+                    rb"(<dcterms:(?:created|modified)[^>]*>)[^<]*(<)",
+                    lambda m: m.group(1) + FIXED_STAMP + m.group(2),
+                    data,
+                )
+            zi = zipfile.ZipInfo(item.filename, date_time=FIXED_TIME)
+            zi.compress_type = zipfile.ZIP_DEFLATED
+            zi.external_attr = item.external_attr
+            zout.writestr(zi, data)
+    os.replace(tmp, path)
     return path
 
 
@@ -309,7 +341,11 @@ def f9_shared_strings():
     return path
 
 
-def main():
+def main(argv):
+    global OUT
+    if len(argv) > 1:
+        OUT = os.path.abspath(argv[1])
+    os.makedirs(OUT, exist_ok=True)
     f1_basic()
     f2_dates()
     f3_floats()
@@ -317,8 +353,11 @@ def main():
     f5_quirks()
     f6_big()
     f7_hyperlinks()
+    f8_merged()
     f9_shared_strings()
+    for path in PATHS:
+        normalize(path)
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv)
