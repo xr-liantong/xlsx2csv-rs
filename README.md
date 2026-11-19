@@ -109,6 +109,11 @@ python3 fixtures/gen_fixtures.py         # writes fixtures/*.xlsx, reproducible
 tools/parity.sh                          # 30 cases against fixtures/*.golden.csv
 ```
 
+The 30 cases are 18 `check` (candidate binary, expected golden), 9
+`check_file_first` (input path before a `nargs='+'` option, golden tracked)
+and 3 `check_enc` (`-c` output encodings). `f6-big`'s golden is not tracked, so
+a clean clone reports 29 passed and 1 skipped; see `ALLOW_SKIP` below.
+
 `gen_fixtures.py` takes an optional output directory (`python3
 fixtures/gen_fixtures.py /tmp/fx`) and produces byte-identical workbooks on
 every run: `docProps/core.xml` and the zip entry timestamps are pinned, so two
